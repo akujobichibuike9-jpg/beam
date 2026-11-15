@@ -36,7 +36,7 @@
     {
       "binding": "DB",
       "database_name": "beam",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      "database_id": "5fa5612c-1ab7-41ef-b69b-626b6767b216",
       "migrations_dir": "migrations"
     }
   ],
