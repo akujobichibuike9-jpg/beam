@@ -218,7 +218,18 @@ export class Room extends DurableObject {
     await this.load();
     if (!this.s) return;
     if (this.s.status === 'waiting' || this.s.status === 'active') {
-      if (Date.now() >= this.s.expiresAt) {
+      const now = Date.now();
+      // Don't cut off a file that's still uploading: give it 5 more minutes at a time,
+      // up to 12 hours after the room opened.
+      const busy = Object.values(this.s.files).some((f) => f.status === 'uploading');
+      if (busy && now >= this.s.expiresAt && now - this.s.createdAt < TEAM_MS) {
+        this.s.expiresAt = now + 5 * 60 * 1000;
+        await this.save();
+        await this.ctx.storage.setAlarm(this.s.expiresAt);
+        this.pushState();
+        return;
+      }
+      if (now >= this.s.expiresAt) {
         await this.finish(this.s.status === 'waiting' ? 'expired' : 'ended');
       } else {
         await this.ctx.storage.setAlarm(this.s.expiresAt);

@@ -355,6 +355,10 @@
     </div>`;
   }
 
+  function keepOpenNote() {
+    return `<div class="banner lg tint" role="status"><span class="dot blue"></span><span><b>Keep beam open until it finishes.</b> Your phone pauses sending if you switch apps or lock the screen. It carries on when you come back.</span></div>`;
+  }
+
   function senderScreen(s, r) {
     const receiver = r.members.find((m) => m.id !== s.memberId);
     const files = r.files.filter((f) => f.status !== 'failed' || f.senderId === s.memberId);
@@ -391,6 +395,7 @@
         <div class="qr lg">${qrSvg(s.joinUrl || location.origin, 'QR code to connect')}</div>
         <div class="pill lg" style="align-self:center"><span class="dot blue"></span>${ended ? 'This code has expired' : 'Waiting for the other device…'}</div>
       `}
+      ${S.uploading ? keepOpenNote() : ''}
       <div class="stack">
         <div class="row between"><b style="font-size:15px">Your files</b><span class="small muted">${files.length}</span></div>
         <div class="list" id="files">${files.map((f) => fileRow(f, r, s)).join('') || '<div class="empty">Uploading…</div>'}</div>
@@ -485,6 +490,7 @@
             <div class="row between"><b class="small" style="color:#33404F">Shared in this room</b>${files.some((f) => f.status === 'ready' && f.senderId !== s.memberId) ? '<a href="#" class="small" data-act="save-all">Save all</a>' : ''}</div>
             <div class="list" id="files">${files.slice().reverse().map((f) => fileRow(f, r, s)).join('') || '<div class="empty">Nothing shared yet.</div>'}</div>
           </div>
+          ${S.uploading ? keepOpenNote() : ''}
           ${canSend ? `<button class="btn block lg dark press" data-act="add-files">${I.up(20)} Send to the room</button>`
             : (ended ? '' : `<button class="btn block lg" disabled>${I.lock} Sending is off for you</button>`)}
           ${isHost && !ended ? '<button class="btn block lg press" data-act="end-room">End room</button>' : ''}
@@ -749,25 +755,49 @@
     flyOut({ name: file.name, type: file.type, thumb });
     const parts = [];
     try {
-      let n = 1;
-      for (let off = 0; off < file.size; off += partSize, n++) {
-        const blob = file.slice(off, off + partSize);
-        let attempt = 0;
-        for (;;) {
-          try {
-            const p = await putPart(`/api/rooms/${s.code}/files/${fileId}/parts/${n}`, blob, off + blob.size, (loaded) => {
-              S.local[fileId].loaded = off + loaded;
-              const f = S.room && S.room.files.find((x) => x.id === fileId);
-              if (f) paintProgress(f, off + loaded);
-            });
-            parts.push({ partNumber: p.partNumber, etag: p.etag });
-            break;
-          } catch (e) {
-            if (++attempt >= 3 || (e.status && e.status < 500 && e.status !== 408)) throw e;
-            await sleep(800 * attempt);
+      // Split into pieces and send up to PARALLEL at once. Finished pieces are kept,
+      // so if the phone pauses the page, sending carries on from where it stopped.
+      const pieces = [];
+      for (let off = 0, n = 1; off < file.size; off += partSize, n++) pieces.push({ n, off, size: Math.min(partSize, file.size - off) });
+      const live = {};      // piece number -> bytes sent so far for pieces in flight
+      let doneBytes = 0;
+      const paint = () => {
+        const loaded = doneBytes + Object.values(live).reduce((a, b) => a + b, 0);
+        S.local[fileId].loaded = loaded;
+        const f = S.room && S.room.files.find((x) => x.id === fileId);
+        if (f) paintProgress(f, loaded);
+      };
+      let next = 0;
+      const worker = async () => {
+        while (next < pieces.length) {
+          const piece = pieces[next++];
+          const blob = file.slice(piece.off, piece.off + piece.size);
+          let attempt = 0;
+          for (;;) {
+            await whenVisibleAndOnline();
+            try {
+              live[piece.n] = 0;
+              const p = await putPart(`/api/rooms/${s.code}/files/${fileId}/parts/${piece.n}`, blob, doneBytes + piece.size, (loaded) => { live[piece.n] = loaded; paint(); });
+              delete live[piece.n];
+              doneBytes += piece.size;
+              parts.push({ partNumber: p.partNumber, etag: p.etag });
+              paint();
+              break;
+            } catch (e) {
+              delete live[piece.n];
+              paint();
+              // Real refusals (room ended, not allowed, too big) stop the upload.
+              if (e.status && e.status < 500 && e.status !== 408 && e.status !== 429) throw e;
+              // Network drops (often the phone pausing the page) wait and retry.
+              attempt++;
+              if (attempt > 40) throw e;
+              await sleep(Math.min(10000, 600 * attempt));
+            }
           }
         }
-      }
+      };
+      await Promise.all(Array.from({ length: Math.min(PARALLEL, pieces.length) }, worker));
+      parts.sort((a, b) => a.partNumber - b.partNumber);
       await api(`/api/rooms/${s.code}/files/${fileId}/complete`, { method: 'POST', body: { parts } });
       const peer = S.room && S.room.type === 'team' ? 'team room' : ((S.room && S.room.members.find((m) => m.id !== s.memberId)) || {}).device || `code ${s.code}`;
       addRecent({ name: file.name, type: file.type, size: file.size, thumb, dir: 'sent', peer });
@@ -779,9 +809,55 @@
     }
   }
 
+  // ---------- keeping uploads alive ----------
+  const PARALLEL = 3;
+  let wakeLock = null;
+  async function keepAwake(on) {
+    try {
+      if (on && !wakeLock && 'wakeLock' in navigator && document.visibilityState === 'visible') {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      } else if (!on && wakeLock) {
+        await wakeLock.release();
+        wakeLock = null;
+      }
+    } catch { /* not supported or refused */ }
+  }
+
+  function whenVisibleAndOnline() {
+    if (document.visibilityState === 'visible' && navigator.onLine !== false) return Promise.resolve();
+    return new Promise((resolve) => {
+      const check = () => {
+        if (document.visibilityState === 'visible' && navigator.onLine !== false) {
+          document.removeEventListener('visibilitychange', check);
+          window.removeEventListener('online', check);
+          resolve();
+        }
+      };
+      document.addEventListener('visibilitychange', check);
+      window.addEventListener('online', check);
+    });
+  }
+
+  let wasHiddenWhileSending = false;
+  document.addEventListener('visibilitychange', () => {
+    if (!S.uploading) return;
+    if (document.visibilityState === 'hidden') {
+      wasHiddenWhileSending = true;
+    } else {
+      keepAwake(true);
+      if (wasHiddenWhileSending) { wasHiddenWhileSending = false; toast('Welcome back. Carrying on where it stopped.'); }
+    }
+  });
+  window.addEventListener('beforeunload', (e) => {
+    if (S.uploading) { e.preventDefault(); e.returnValue = ''; }
+  });
+
   async function runQueue() {
     if (S.uploading) return;
     S.uploading = true;
+    keepAwake(true);
+    if (S.screen === 'room') render();
     try {
       while (S.queue.length) {
         const file = S.queue.shift();
@@ -794,6 +870,7 @@
       }
     } finally {
       S.uploading = false;
+      keepAwake(false);
       if (S.screen === 'room') render();
     }
   }
