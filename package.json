@@ -1,0 +1,18 @@
+{
+  "name": "beam",
+  "version": "1.0.0",
+  "description": "Phone to laptop file transfer with 4-digit codes and team rooms, on Cloudflare",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 migrations apply beam --local",
+    "db:remote": "wrangler d1 migrations apply beam --remote",
+    "test": "node test/api.test.mjs"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "wrangler": "^4.162.0"
+  },
+  "private": true,
+  "type": "module"
+}

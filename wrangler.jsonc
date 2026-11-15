@@ -1,0 +1,58 @@
+{
+  // beam: phone <-> laptop file transfer on Cloudflare
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "beam",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-01",
+  "observability": { "enabled": true },
+
+  // The app (public/index.html) and admin (public/admin.html) are static files.
+  // Requests to /api/* always go to the Worker first.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // One Durable Object per 4-digit code holds that room's live state.
+  // One Limiter per network handles wrong-code lockouts.
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOMS", "class_name": "Room" },
+      { "name": "LIMITER", "class_name": "Limiter" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Room", "Limiter"] }
+  ],
+
+  // Every transferred file lives here for 30 days.
+  "r2_buckets": [
+    { "binding": "FILES", "bucket_name": "beam-files" }
+  ],
+
+  // Transfer history, members, files, reports, blocks.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "beam",
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Daily clean-up: deletes files older than RETENTION_DAYS and old history.
+  "triggers": { "crons": ["17 3 * * *"] },
+
+  "vars": {
+    "RETENTION_DAYS": "30",
+    "CODE_TTL_MIN": "5",
+    "MAX_FILE_MB": "2048",
+    "MAX_TEAM": "25",
+    "LOCKOUT_TRIES": "5",
+    "LOCKOUT_MIN": "15"
+  }
+  // Secrets (set with `npx wrangler secret put NAME`):
+  //   ADMIN_TOKEN  - password for the admin dashboard
+  //   HASH_SALT    - any long random string, used to hash IP addresses
+}

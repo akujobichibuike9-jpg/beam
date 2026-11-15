@@ -1,0 +1,10 @@
+{
+  "name": "beam",
+  "short_name": "beam",
+  "description": "Send files between your phone and laptop with a 4-digit code.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#EEF5FC",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
