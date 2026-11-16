@@ -87,6 +87,16 @@ The admin API already needs `ADMIN_TOKEN`. For a second lock, put
 Access → Applications → Self-hosted). Only the email addresses you list can
 then reach them.
 
+## Paste (shared clipboard)
+
+Copy text or a link on one device and get it on the other. Tap **Paste** on
+Home (or press Ctrl/⌘+V anywhere on a laptop), and the text goes out as a
+sticky note with the same code/QR as files. It shows up on the other device with
+a **Copy** button (plus **Open link** for links; short codes show big). Either
+side can paste back. In chats, any message can be copied from its menu, and
+pastes over 1,200 characters arrive as a note. Notes keep exact spacing and line
+breaks, up to 20,000 characters.
+
 ## Fast video sending
 
 In private chats and team rooms, big videos are made smaller on the sender's
