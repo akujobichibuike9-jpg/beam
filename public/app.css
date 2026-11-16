@@ -650,3 +650,8 @@ html.theme-anim, html.theme-anim * { transition: background-color .35s ease, col
 @keyframes squish { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.12, .86); } }
 @media (min-width: 1100px) { body.with-aside #squeeze { right: 380px; } }
 @media (prefers-reduced-motion: reduce) { .sq-ic { animation: none; } }
+
+/* Wide rows only shrink a touch when pressed, and not at all while a button inside
+   them is pressed (otherwise the button slides out from under the mouse on desktop). */
+.room-row.press:active { transform: scale(.985); }
+.press:active:has(button:active, a:active) { transform: none; }
