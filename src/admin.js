@@ -139,7 +139,7 @@ async function history(env, url) {
   const since = Date.now() - cfg.retentionDays * DAY;
   const where = ['r.created_at >= ?'];
   const args = [since];
-  if (type === 'single' || type === 'team') { where.push('r.type = ?'); args.push(type); }
+  if (type === 'single' || type === 'team' || type === 'chat') { where.push('r.type = ?'); args.push(type); }
   if (q) {
     where.push("(r.code LIKE ? OR EXISTS (SELECT 1 FROM members m WHERE m.room_id = r.id AND (m.device LIKE ? OR m.name LIKE ?)) OR EXISTS (SELECT 1 FROM files f WHERE f.room_id = r.id AND f.name LIKE ?) OR EXISTS (SELECT 1 FROM messages x WHERE x.room_id = r.id AND x.status = 'ok' AND x.text LIKE ?))");
     const like = `%${q}%`;

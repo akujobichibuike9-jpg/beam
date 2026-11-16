@@ -74,6 +74,7 @@
     mic: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>`,
     moon: `<svg class="moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>`,
     sun: `<svg class="sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>`,
+    bubble: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>`,
     pen: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>`
   };
 
@@ -144,8 +145,8 @@
   function askName(title, then) {
     sheet(`
       <h2>${esc(title)}</h2>
-      <label class="field">Your name <input class="input" name="name" maxlength="40" autocomplete="given-name" value="${esc(myName())}" placeholder="${esc(DEVICE)}"></label>
-      <p class="small muted">People in team rooms see this next to your files.</p>
+      <label class="field">Your name (optional) <input class="input" name="name" maxlength="40" autocomplete="nickname" value="${esc(myName())}" placeholder="${esc(DEVICE)}"></label>
+      <p class="small muted">Leave it blank to stay anonymous. Others will just see “${esc(DEVICE)}”.</p>
       <div class="row" style="justify-content:flex-end">
         <button class="btn sm lg press" value="cancel" formnovalidate>Cancel</button>
         <button class="btn sm lg dark press" value="ok">Continue</button>
@@ -181,12 +182,12 @@
 
   function renderNav() {
     $('#nav').hidden = isChatRoom();
-    const active = S.screen === 'room' ? (S.session && S.session.type === 'team' ? 'team' : (S.session && S.session.role === 'host' ? 'send' : 'receive')) : S.screen;
+    const active = S.screen === 'room' ? (S.session && (S.session.type === 'team' || S.session.type === 'chat') ? 'team' : (S.session && S.session.role === 'host' ? 'send' : 'receive')) : S.screen;
     const items = [
       ['home', 'Home', I.home],
       ['send', 'Send', I.up(24)],
       ['receive', 'Receive', I.down(24)],
-      ['team', 'Team room', I.team(24)]
+      ['team', 'Chat and rooms', I.team(24)]
     ];
     $('#nav').innerHTML = items.map(([id, label, icon]) =>
       `<a href="#" data-act="nav-${id}" aria-label="${label}" class="lg press ${active === id ? 'dark' : ''}" ${active === id ? 'aria-current="page"' : ''}>${icon}</a>`).join('');
@@ -216,6 +217,7 @@
     renderNav();
     renderComposer();
     renderInfo();
+    renderAside();
     renderCall();
     after[S.screen] && after[S.screen]();
     if (chat) {
@@ -253,8 +255,9 @@
 
   const SCREENS = {
     home() {
-      return `<section class="screen" aria-labelledby="h-home">
+      return `<section class="screen home" aria-labelledby="h-home">
         ${header(`<div class="row" style="gap:10px"><button class="circle lg press theme-toggle" data-act="theme" aria-label="Switch light or dark theme">${I.moon}${I.sun}</button><button class="circle lg press" data-act="edit-name" aria-label="Your name: ${esc(myName() || 'not set')}">${I.pen}</button></div>`)}
+        <div class="home-grid"><div class="home-main">
         <div class="stack" style="gap:8px">
           <h1 id="h-home">What are we beaming today?</h1>
           <p class="muted">Open beam on both devices to start.</p>
@@ -282,16 +285,21 @@
             <div class="tile-label"><div><strong>Send</strong><span style="color:var(--muted-2)">Pick files</span></div><span class="mini-btn lg dark">${I.up(18)}</span></div>
           </a>
         </div>
-        <a href="#" class="team-tile lg press" data-act="nav-team">
-          <span class="avatars" aria-hidden="true"><span class="av" style="background:var(--primary);color:var(--on-primary)">A</span><span class="av">T</span><span class="av" style="background:#9CCBF5">S</span></span>
-          <span class="grow"><strong class="display" style="font-size:18px;display:block">Team room</strong><span class="small muted">Share with lots of people at once</span></span>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
-        </a>
-        ${S.session ? `<a href="#" class="card row press" data-act="resume" style="text-decoration:none;color:inherit"><span class="dot blue"></span><span class="grow"><b>Back to your ${S.session.type === 'team' ? 'team room' : 'transfer'}</b><br><span class="small muted">Code ${esc(S.session.code)}</span></span>${I.up(18)}</a>` : ''}
-        <div class="stack">
-          <div class="row between"><b style="font-size:15px">Recent on this device</b>${store.get('beam_recent', []).length ? '<a href="#" class="small" data-act="clear-recent">Clear</a>' : ''}</div>
-          ${recentList(6)}
+        <div class="room-tiles">
+          <button class="team-tile lg press" data-act="chat-create">
+            <span class="mini-btn lg dark chat-ic" style="width:44px;height:44px" aria-hidden="true">${I.bubble}</span>
+            <span class="grow"><strong class="display" style="font-size:18px;display:block">Private chat</strong><span class="small muted">Just you and one other</span></span>
+          </button>
+          <a href="#" class="team-tile lg press" data-act="nav-team">
+            <span class="avatars" aria-hidden="true"><span class="av" style="background:var(--primary);color:var(--on-primary)">A</span><span class="av">T</span><span class="av" style="background:#9CCBF5;color:#0E1116">S</span></span>
+            <span class="grow"><strong class="display" style="font-size:18px;display:block">Team room</strong><span class="small muted">Lots of people</span></span>
+          </a>
         </div>
+        ${S.session ? `<a href="#" class="card row press" data-act="resume" style="text-decoration:none;color:inherit"><span class="dot blue"></span><span class="grow"><b>Back to your ${S.session.type === 'team' ? 'team room' : S.session.type === 'chat' ? 'private chat' : 'transfer'}</b><br><span class="small muted">Code ${esc(S.session.code)}</span></span>${I.up(18)}</a>` : ''}
+        </div><aside class="home-side stack">
+          <div class="row between"><b style="font-size:15px">Recent on this device</b>${store.get('beam_recent', []).length ? '<a href="#" class="small" data-act="clear-recent">Clear</a>' : ''}</div>
+          ${recentList(8)}
+        </aside></div>
       </section>`;
     },
 
@@ -302,13 +310,13 @@
         </div>
         <div class="stack" style="gap:6px">
           <h1 id="h-recv">Enter the code</h1>
-          <p class="muted">It's on the screen of the device that's sending.</p>
+          <p class="muted">5 letters and numbers, from the person who shared it.</p>
         </div>
         <form id="join-form" class="stack" style="gap:18px" autocomplete="off">
-          <div class="digits" role="group" aria-label="4-digit code">
-            ${[1, 2, 3, 4].map((i) => `<label class="sr" for="d${i}">Digit ${i}</label><input id="d${i}" class="digit-input" inputmode="numeric" pattern="[0-9]*" maxlength="1" ${i === 1 ? 'autocomplete="one-time-code"' : ''}>`).join('')}
+          <div class="digits" role="group" aria-label="5-character code">
+            ${[1, 2, 3, 4, 5].map((i) => `<label class="sr" for="d${i}">Character ${i}</label><input id="d${i}" class="digit-input" inputmode="text" autocapitalize="characters" autocorrect="off" autocomplete="off" spellcheck="false" maxlength="1">`).join('')}
           </div>
-          <label class="field">Your name (shown in team rooms)
+          <label class="field">Your name (optional, shown in chats)
             <input class="input" name="name" maxlength="40" value="${esc(myName())}" placeholder="${esc(DEVICE)}">
           </label>
           <p class="error" id="join-error" role="alert"></p>
@@ -328,7 +336,7 @@
       if (!s || !r) {
         return `<section class="screen"><div class="empty" style="margin-top:40vh">Connecting…</div></section>`;
       }
-      if (r.type === 'team') return teamScreen(s, r);
+      if (r.type === 'team' || r.type === 'chat') return teamScreen(s, r);
       return s.role === 'host' ? senderScreen(s, r) : receiverScreen(s, r);
     },
 
@@ -336,16 +344,20 @@
       return `<section class="screen" aria-labelledby="h-team">
         <div class="row between"><a href="#" class="circle lg press" data-act="nav-home" aria-label="Back">${I.back}</a></div>
         <div class="stack" style="gap:6px">
-          <h1 id="h-team">Team rooms</h1>
-          <p class="muted">One person opens a room. Everyone else joins with the code or QR. The host decides who can send.</p>
+          <h1 id="h-team">Chat & rooms</h1>
+          <p class="muted">Start one and share the code. No accounts, no phone numbers. Codes work for 1 hour until someone joins.</p>
         </div>
-        <button class="team-tile lg tint press" data-act="team-create" style="height:88px;border:none">
+        <button class="team-tile lg tint press" data-act="chat-create" style="height:88px;border:none">
+          <span class="mini-btn lg dark" style="width:48px;height:48px">${I.bubble}</span>
+          <span class="grow"><strong class="display" style="font-size:20px;display:block">Start a private chat</strong><span class="small" style="color:var(--muted-2)">1-on-1: messages, files, voice notes and calls</span></span>
+        </button>
+        <button class="team-tile lg press" data-act="team-create" style="height:88px;border:none">
           <span class="mini-btn lg dark" style="width:48px;height:48px">${I.team(22)}</span>
-          <span class="grow"><strong class="display" style="font-size:20px;display:block">Start a team room</strong><span class="small" style="color:var(--muted-2)">You'll get a code to share</span></span>
+          <span class="grow"><strong class="display" style="font-size:20px;display:block">Start a team room</strong><span class="small" style="color:var(--muted-2)">Up to 25 people · you decide who can share files</span></span>
         </button>
         <a href="#" class="team-tile lg press" data-act="nav-receive" style="height:88px">
           <span class="mini-btn lg" style="width:48px;height:48px">${I.down(22)}</span>
-          <span class="grow"><strong class="display" style="font-size:20px;display:block">Join a team room</strong><span class="small muted">Enter the host's code</span></span>
+          <span class="grow"><strong class="display" style="font-size:20px;display:block">Join with a code</strong><span class="small muted">For a chat, room or file</span></span>
         </a>
         <p class="notice">Files shared in rooms are kept on beam's servers for ${S.cfg.retentionDays} days, then deleted.</p>
       </section>`;
@@ -405,11 +417,12 @@
     const pct = totals.size ? Math.round((totals.up / totals.size) * 100) : 0;
     const allUp = files.length && files.every((f) => f.status === 'ready');
     const ended = r.status !== 'waiting' && r.status !== 'active';
-    return `<section class="screen" aria-labelledby="h-send">
+    return `<section class="screen wide2" aria-labelledby="h-send">
       <div class="row between">
         <a href="#" class="circle lg press" data-act="nav-home" aria-label="Back">${I.back}</a>
         ${receiver || ended ? '' : `<span class="pill lg" data-countdown="${r.expiresAt}">Expires in …</span>`}
       </div>
+      <div class="cols2"><div class="col">
       ${receiver ? `
         <div class="stack" style="gap:6px;align-items:center;text-align:center">
           <h1 id="h-send">${allUp ? 'Sent' : `Sending to ${esc(receiver.device)}`}</h1>
@@ -431,6 +444,7 @@
         <div class="qr lg">${qrSvg(s.joinUrl || location.origin, 'QR code to connect')}</div>
         <div class="pill lg" style="align-self:center"><span class="dot blue"></span>${ended ? 'This code has expired' : 'Waiting for the other device…'}</div>
       `}
+      </div><div class="col">
       ${S.uploading ? keepOpenNote() : ''}
       <div class="stack">
         <div class="row between"><b style="font-size:15px">Your files</b><span class="small muted">${files.length}</span></div>
@@ -442,6 +456,7 @@
         <button class="btn grow lg dark press" data-act="end-room">Done</button>
       </div>`}
       <p class="notice">Files are kept on beam's servers for ${S.cfg.retentionDays} days, then deleted.</p>
+      </div></div>
     </section>`;
   }
 
@@ -470,7 +485,7 @@
 
   // ---------- team room: chat, voice notes, calls ----------
   const EMOJI = ['👍', '❤️', '😂', '😮', '🔥', '👀'];
-  const isChatRoom = () => S.screen === 'room' && S.room && S.room.type === 'team' && S.session;
+  const isChatRoom = () => S.screen === 'room' && S.room && (S.room.type === 'team' || S.room.type === 'chat') && S.session;
   const meId = () => (S.session ? S.session.memberId : null);
   const memberById = (id) => (S.room ? S.room.members.find((m) => m.id === id) : null);
   const tint = (id) => ['#CDE4FA', '#9CCBF5', '#DCEBFA', '#B9D8F6', '#E6F0FB'][[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % 5];
@@ -623,14 +638,19 @@
     const call = r.call;
     const inCall = C.joined;
     const callers = call ? call.participants.map((p) => memberById(p.id)).filter(Boolean) : [];
+    const duo = r.type === 'chat';
+    const other = people.find((m) => m.id !== s.memberId);
+    const title = duo ? (other ? (other.name || other.device) : 'Private chat') : (isHost ? 'Your room' : `${host.name || 'Team'}'s room`);
+    const sub = ended ? 'Ended' : duo ? (other ? (other.online ? 'online' : 'away') : `waiting · code ${s.code}`) : `${online.length} here · code ${s.code}`;
     return `<section class="screen chat-screen" aria-labelledby="h-team2">
       <header class="room-head">
-        <a href="#" class="circle lg press" data-act="${isHost ? 'nav-home' : 'leave'}" aria-label="${isHost ? 'Back' : 'Leave room'}">${isHost ? I.back : I.close}</a>
-        <button class="title" data-act="info" aria-label="Room info and people">
-          <b id="h-team2">${isHost ? 'Your room' : `${esc(host.name || 'Team')}'s room`}</b>
-          <span>${ended ? 'Ended' : `${online.length} here · code ${esc(s.code)}`}</span>
+        <a href="#" class="circle lg press" data-act="${isHost ? 'nav-home' : 'leave'}" aria-label="${isHost ? 'Back' : 'Leave'}">${isHost ? I.back : I.close}</a>
+        ${duo && other ? `<span class="av" style="width:40px;height:40px;background:${tint(other.id)};color:#0E1116;border:none" aria-hidden="true">${esc(initial(other.name || other.device))}</span>` : ''}
+        <button class="title" data-act="info" aria-label="${duo ? 'Chat info' : 'Room info and people'}">
+          <b id="h-team2">${esc(title)}</b>
+          <span>${duo && other && other.online && !ended ? '<span class="dot" style="display:inline-block;width:7px;height:7px;margin-right:5px;vertical-align:middle"></span>' : ''}${esc(sub)}</span>
         </button>
-        <button class="head-avs" data-act="info" aria-label="People" style="background:none;border:none;padding:0;cursor:pointer">${people.slice(0, 3).map((m) => `<span class="av" style="background:${m.id === s.memberId ? 'var(--primary)' : tint(m.id)};color:${m.id === s.memberId ? 'var(--on-primary)' : '#0E1116'}">${esc(initial(m.name || m.device))}</span>`).join('')}</button>
+        ${duo ? '' : `<button class="head-avs" data-act="info" aria-label="People" style="background:none;border:none;padding:0;cursor:pointer">${people.slice(0, 3).map((m) => `<span class="av" style="background:${m.id === s.memberId ? 'var(--primary)' : tint(m.id)};color:${m.id === s.memberId ? 'var(--on-primary)' : '#0E1116'}">${esc(initial(m.name || m.device))}</span>`).join('')}</button>`}
         ${ended ? '' : `<button class="circle lg press" data-act="call-start" data-video="0" aria-label="Voice call">${I.phone}</button>
         <button class="circle lg press" data-act="call-start" data-video="1" aria-label="Video call">${I.video}</button>`}
       </header>
@@ -639,12 +659,12 @@
         <div class="grow"><b>${call.video ? 'Video' : 'Voice'} call</b><div class="small" style="color:var(--muted-2)">${callers.map((m) => esc(m.name || m.device)).slice(0, 3).join(', ')}${callers.length > 3 ? ` +${callers.length - 3}` : ''}</div></div>
         <button class="btn sm lg dark press" data-act="call-start" data-video="${call.video ? 1 : 0}">Join</button>
       </div>` : ''}
-      ${isHost && people.length === 1 && !ended ? `<div class="card row enter" style="margin-top:14px;gap:14px">
-        <div style="background:#fff;border-radius:12px;width:84px;height:84px;flex-shrink:0">${qrSvg(s.joinUrl || location.origin, 'QR code to join')}</div>
-        <div class="stack grow" style="gap:6px"><span class="small muted">Invite people with</span><span class="display" style="font-size:30px;font-weight:700;letter-spacing:.12em">${esc(s.code)}</span>
-        <button class="btn sm lg dark press" data-act="share" style="align-self:flex-start">${I.share} Share invite</button></div>
+      ${isHost && people.length === 1 && !ended ? `<div class="card row enter invite-card" style="margin-top:14px;gap:14px">
+        <div style="background:#fff;border-radius:12px;width:96px;height:96px;flex-shrink:0;padding:4px">${qrSvg(s.joinUrl || location.origin, 'QR code to join')}</div>
+        <div class="stack grow" style="gap:6px"><span class="small muted">${duo ? 'Send this code to the person you want to chat with' : 'Invite people with'}</span><span class="display code-big">${esc(s.code)}</span>
+        <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm lg dark press" data-act="share">${I.share} Share</button><span class="tiny muted" data-countdown="${r.expiresAt}" data-short="1"></span></div></div>
       </div>` : ''}
-      ${ended ? `<div class="banner lg" style="margin-top:12px">${I.lock}<span>This room has ended. You can still save what was shared.</span></div>` : ''}
+      ${ended ? `<div class="banner lg" style="margin-top:12px">${I.lock}<span>This ${duo ? 'chat' : 'room'} has ended. You can still save what was shared.</span></div>` : ''}
       <div class="feed" id="feed" aria-live="polite">${feedHtml(r)}</div>
     </section>`;
   }
@@ -677,7 +697,7 @@
       <div id="reply-strip"></div>
       <div class="cbar">
         ${me.canSend ? `<button class="circle lg press" data-act="add-files" aria-label="Share files"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>` : ''}
-        <label class="field-wrap lg"><span class="sr">Message</span><textarea id="msg" rows="1" maxlength="2000" placeholder="Message the room…" enterkeyhint="send"></textarea></label>
+        <label class="field-wrap lg"><span class="sr">Message</span><textarea id="msg" rows="1" maxlength="2000" placeholder="${r.type === 'chat' ? 'Message…' : 'Message the room…'}" enterkeyhint="send"></textarea></label>
         <button class="circle lg dark press send" id="send-btn" data-act="${me.canSend ? 'rec-start' : 'send-msg'}" aria-label="${me.canSend ? 'Record a voice note' : 'Send'}">${me.canSend ? I.mic : I.up(22)}</button>
       </div>
     </div>`;
@@ -997,9 +1017,36 @@
     const isHost = me.role === 'host';
     const ended = r.status !== 'waiting' && r.status !== 'active';
     const people = r.members.filter((m) => !m.removed);
-    d.innerHTML = `<div class="stack" style="gap:16px">
-      <div class="row between"><h2>Room info</h2><button class="circle lg press" data-act="info-close" aria-label="Close">${I.close}</button></div>
-      ${isHost && !ended ? `<div class="row" style="gap:14px">
+    d.innerHTML = infoHtml(s, r, me, isHost, ended, people, true);
+  }
+
+  // On wide screens the chat info sits beside the chat instead of in a pop-up.
+  const wideMq = window.matchMedia('(min-width: 1100px)');
+  function renderAside() {
+    const el = $('#aside');
+    const on = isChatRoom() && wideMq.matches;
+    el.hidden = !on;
+    document.body.classList.toggle('with-aside', on);
+    if (!on) return;
+    const s = S.session; const r = S.room;
+    const me = r.members.find((m) => m.id === s.memberId) || {};
+    const keep = el.scrollTop;
+    el.innerHTML = infoHtml(s, r, me, me.role === 'host', r.status !== 'waiting' && r.status !== 'active', r.members.filter((m) => !m.removed), false);
+    el.scrollTop = keep;
+    if ($('#info').open) $('#info').close();
+  }
+  wideMq.addEventListener('change', () => { if (isChatRoom()) render(); });
+
+  function infoHtml(s, r, me, isHost, ended, people, inDialog) {
+    const duo = r.type === 'chat';
+    return `<div class="stack" style="gap:16px">
+      <div class="row between"><h2>${duo ? 'Chat info' : 'Room info'}</h2>${inDialog ? `<button class="circle lg press" data-act="info-close" aria-label="Close">${I.close}</button>` : ''}</div>
+      ${duo && !ended ? `<div class="row" style="gap:14px">
+          <div class="qr-box" style="width:96px;height:96px;flex-shrink:0;border-radius:14px;padding:4px">${qrSvg(s.joinUrl || location.origin, 'QR code to join the chat')}</div>
+          <div class="stack grow" style="gap:6px"><span class="display code-big">${esc(s.code)}</span>
+          <span class="tiny muted">Private: only 2 people can be in this chat.${people.length < 2 ? ' The code works for 1 hour.' : ''}</span></div>
+        </div>` : ''}
+      ${!duo && isHost && !ended ? `<div class="row" style="gap:14px">
           <div class="qr-box" style="width:112px;height:112px;flex-shrink:0;border-radius:14px;padding:4px">${qrSvg(s.joinUrl || location.origin, 'QR code to join the room')}</div>
           <div class="stack grow" style="gap:8px"><span class="display" style="font-size:34px;font-weight:700;letter-spacing:.12em">${esc(s.code)}</span>
           <button class="btn sm lg dark press" data-act="share" style="align-self:flex-start">${I.share} Share invite</button></div>
@@ -1011,7 +1058,7 @@
             <button class="${r.mode === 'host' ? 'lg dark' : ''} press" aria-pressed="${r.mode === 'host'}" data-act="mode" data-mode="host">Only me</button>
           </div>
           <span class="tiny muted">Everyone can always chat and join calls.</span>
-        </div>` : `<p class="small muted">Code ${esc(s.code)} · ${me.canSend ? 'You can share files and voice notes.' : 'You can chat and join calls. Only the host shares files here.'}</p>`}
+        </div>` : (duo ? '' : `<p class="small muted">Code ${esc(s.code)} · ${me.canSend ? 'You can share files and voice notes.' : 'You can chat and join calls. Only the host shares files here.'}</p>`)}
       ${window.beamWalls ? `<div class="stack" style="gap:8px">
         <div class="row between"><b class="small" style="color:var(--muted-2)">Background</b>
           <button class="btn sm lg press" data-act="wall-shuffle"><span class="dice" aria-hidden="true">🎲</span> Shuffle</button></div>
@@ -1019,15 +1066,15 @@
         <span class="tiny muted">Only changes it on this device.</span>
       </div>` : ''}
       <div class="stack" style="gap:8px">
-        <b class="small" style="color:var(--muted-2)">People · ${people.length}</b>
+        <b class="small" style="color:var(--muted-2)">${duo ? 'In this chat' : `People · ${people.length}`}</b>
         ${people.map((m) => `<div class="item" style="min-height:56px;background:var(--blue-50)">
           <span class="av" style="background:${m.role === 'host' ? 'var(--primary)' : tint(m.id)};color:${m.role === 'host' ? 'var(--on-primary)' : '#0E1116'};border:none">${esc(initial(m.name || m.device))}</span>
-          <div class="grow"><div class="name">${esc(m.name || m.device)}${m.id === s.memberId ? ' (you)' : ''}</div><div class="meta">${m.role === 'host' ? 'Host' : (m.canSend ? 'Can share files' : 'Chat only')} · ${m.online ? 'here' : 'away'}</div></div>
-          ${isHost && m.role !== 'host' && !ended ? `<button class="switch" role="switch" aria-checked="${!!m.canSend}" aria-label="Let ${esc(m.name || m.device)} share files" data-act="member-toggle" data-id="${m.id}" data-on="${!!m.canSend}" ${r.mode === 'all' ? '' : 'disabled'}><span></span></button>
+          <div class="grow"><div class="name">${esc(m.name || m.device)}${m.id === s.memberId ? ' (you)' : ''}</div><div class="meta">${duo ? '' : `${m.role === 'host' ? 'Host' : (m.canSend ? 'Can share files' : 'Chat only')} · `}${m.online ? 'here' : 'away'}</div></div>
+          ${isHost && m.role !== 'host' && !ended && !duo ? `<button class="switch" role="switch" aria-checked="${!!m.canSend}" aria-label="Let ${esc(m.name || m.device)} share files" data-act="member-toggle" data-id="${m.id}" data-on="${!!m.canSend}" ${r.mode === 'all' ? '' : 'disabled'}><span></span></button>
           <button class="circle press" style="width:40px;height:40px;border:none;background:transparent;color:var(--muted)" data-act="remove-member" data-id="${m.id}" aria-label="Remove ${esc(m.name || m.device)}">${I.close}</button>` : ''}
         </div>`).join('')}
       </div>
-      ${ended ? '' : (isHost ? '<button class="btn block lg press" data-act="end-room">End room for everyone</button>' : '<button class="btn block lg press" data-act="leave">Leave room</button>')}
+      ${ended ? '' : (duo ? '<button class="btn block lg press" data-act="end-room">End chat</button>' : (isHost ? '<button class="btn block lg press" data-act="end-room">End room for everyone</button>' : '<button class="btn block lg press" data-act="leave">Leave room</button>'))}
       <p class="notice">Messages, voice notes and files are kept for ${S.cfg.retentionDays} days, then deleted.</p>
     </div>`;
   }
@@ -1275,10 +1322,10 @@
       const inputs = $$('.digit-input');
       inputs.forEach((inp, i) => {
         inp.addEventListener('input', () => {
-          const v = inp.value.replace(/\D/g, '');
-          if (v.length > 1) { // pasted several digits
-            v.slice(0, 4).split('').forEach((d, j) => { if (inputs[j]) inputs[j].value = d; });
-            inputs[Math.min(3, v.length - 1)].focus();
+          const v = inp.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (v.length > 1) { // pasted a whole code
+            v.slice(0, 5).split('').forEach((d, j) => { if (inputs[j]) inputs[j].value = d; });
+            inputs[Math.min(4, v.length - 1)].focus();
           } else {
             inp.value = v;
             if (v && inputs[i + 1]) inputs[i + 1].focus();
@@ -1291,10 +1338,10 @@
       });
       $('#join-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const code = inputs.map((x) => x.value).join('');
+        const code = inputs.map((x) => x.value).join('').toUpperCase();
         const name = $('#join-form [name=name]').value.trim();
         store.set('beam_name', name.slice(0, 40));
-        if (!/^\d{4}$/.test(code)) { $('#join-error').textContent = 'Enter all 4 digits.'; return; }
+        if (!/^[A-Z0-9]{5}$/.test(code) && !/^\d{4}$/.test(code)) { $('#join-error').textContent = 'Enter all 5 characters.'; return; }
         const btn = $('#join-btn');
         btn.disabled = true; btn.textContent = 'Connecting…';
         try {
@@ -1324,7 +1371,7 @@
         const left = Math.max(0, Number(el.dataset.countdown) - Date.now());
         const m = Math.floor(left / 60000);
         const sec = Math.floor((left % 60000) / 1000);
-        el.textContent = left ? `Expires in ${m}:${String(sec).padStart(2, '0')}` : 'Code expired';
+        el.textContent = left ? (el.dataset.short ? `Code works for ${m >= 1 ? `${m} more min` : `${sec} s`}` : `Expires in ${m}:${String(sec).padStart(2, '0')}`) : 'Code expired';
       });
     };
     update();
@@ -1433,7 +1480,7 @@
       const joined = !prev.members.some((m) => m.id !== s.memberId) && state.members.some((m) => m.id !== s.memberId);
       if (joined) { toast(`${state.members.find((m) => m.id !== s.memberId).device} connected`, true); if (navigator.vibrate) navigator.vibrate(15); }
     }
-    if (prev && s && state.type === 'team') {
+    if (prev && s && (state.type === 'team' || state.type === 'chat')) {
       const me = state.members.find((m) => m.id === s.memberId);
       const was = prev.members.find((m) => m.id === s.memberId);
       if (me && was && me.canSend !== was.canSend && me.role !== 'host') toast(me.canSend ? 'You can send files now' : 'The host turned sending off for you', true);
@@ -1533,6 +1580,7 @@
     if (!s) return;
     if (msg.reason === 'removed') toast('This room was closed by beam.', true);
     else if (msg.reason === 'expired') toast('The code expired before anyone joined.', true);
+    else if (S.room && S.room.type === 'chat') toast('This chat has ended. You can still save what was shared.', true);
     else if (s.role !== 'host') toast('The host ended the room. You can still save the files.', true);
     if (S.screen === 'room') render();
   }
@@ -1678,7 +1726,7 @@
       await Promise.all(Array.from({ length: Math.min(PARALLEL, pieces.length) }, worker));
       parts.sort((a, b) => a.partNumber - b.partNumber);
       await api(`/api/rooms/${s.code}/files/${fileId}/complete`, { method: 'POST', body: { parts } });
-      const peer = S.room && S.room.type === 'team' ? 'team room' : ((S.room && S.room.members.find((m) => m.id !== s.memberId)) || {}).device || `code ${s.code}`;
+      const peer = S.room && S.room.type === 'team' ? 'team room' : S.room && S.room.type === 'chat' ? (((S.room.members.find((m) => m.id !== s.memberId)) || {}).name || 'private chat') : ((S.room && S.room.members.find((m) => m.id !== s.memberId)) || {}).device || `code ${s.code}`;
       addRecent({ name: file.name, type: file.type, size: file.size, thumb, dir: 'sent', peer });
     } catch (e) {
       try { await api(`/api/rooms/${s.code}/files/${fileId}/abort`, { method: 'POST' }); } catch { /* ignore */ }
@@ -1772,7 +1820,7 @@
     files = files.filter((f) => f.size <= max);
     if (!files.length) return;
     const s = S.session;
-    const reuse = s && S.room && (S.room.status === 'waiting' || S.room.status === 'active') && (s.role === 'host' || S.room.type === 'team');
+    const reuse = s && S.room && (S.room.status === 'waiting' || S.room.status === 'active') && (s.role === 'host' || S.room.type === 'team' || S.room.type === 'chat');
     if (!reuse) {
       try {
         await createRoom(type);
@@ -1876,7 +1924,7 @@
   const ACTIONS = {
     'nav-home': () => go('home'),
     'nav-receive': () => (S.session && S.session.role === 'member' && S.room && (S.room.status === 'active' || S.room.status === 'waiting')) ? go('room') : go('receive'),
-    'nav-team': () => (S.session && S.session.type === 'team' && S.room && S.room.status !== 'ended' && S.room.status !== 'expired' && S.room.status !== 'removed') ? go('room') : go('team'),
+    'nav-team': () => (S.session && (S.session.type === 'team' || S.session.type === 'chat') && S.room && S.room.status !== 'ended' && S.room.status !== 'expired' && S.room.status !== 'removed') ? go('room') : go('team'),
     'nav-send': async () => {
       if (S.session && S.session.role === 'host' && S.session.type === 'single' && S.room && (S.room.status === 'waiting' || S.room.status === 'active')) { go('room'); return; }
       const files = await pickFiles();
@@ -1884,6 +1932,12 @@
     },
     'add-files': async () => sendFiles(await pickFiles(), S.session ? S.session.type : 'single'),
     resume: () => go('room'),
+    'chat-create': () => askName('Start a private chat', async () => {
+      try {
+        await createRoom('chat');
+        go('room');
+      } catch (e) { toast(e.message, true); }
+    }),
     'team-create': () => askName('Start a team room', async () => {
       try {
         await createRoom('team');
@@ -1893,13 +1947,16 @@
     'edit-name': () => askName('What should we call you?', () => render()),
     'clear-recent': () => { store.set('beam_recent', []); render(); },
     leave: () => leave(),
-    'end-room': () => sheet(`
-        <h2>End this room?</h2>
-        <p class="muted">No one new can join or send. Anyone already here can still save what was shared.</p>
+    'end-room': () => {
+      const duo = S.room && S.room.type === 'chat';
+      sheet(`
+        <h2>End this ${duo ? 'chat' : 'room'}?</h2>
+        <p class="muted">${duo ? 'Neither of you can send anything new. You can both still save what was shared.' : 'No one new can join or send. Anyone already here can still save what was shared.'}</p>
         <div class="row" style="justify-content:flex-end">
           <button class="btn sm lg press" value="cancel" formnovalidate>Keep it open</button>
-          <button class="btn sm lg dark press" value="ok">End room</button>
-        </div>`, () => leave()),
+          <button class="btn sm lg dark press" value="ok">End ${duo ? 'chat' : 'room'}</button>
+        </div>`, () => leave());
+    },
     save: (el) => saveFile(el.dataset.id),
     'save-all': () => saveAll(),
     report: (el) => {
@@ -1969,7 +2026,10 @@
         try { await api(`/api/rooms/${S.session.code}/messages/${el.dataset.id}/report`, { method: 'POST', body: { reason: d.reason } }); toast('Thanks. We\'ll take a look.'); } catch (e) { toast(e.message, true); }
       });
     },
-    info: () => { const d = $('#info'); if (!d.open) d.showModal(); renderInfo(); },
+    info: () => {
+      if (wideMq.matches) { const a = $('#aside'); if (a) a.animate([{ transform: 'translateX(8px)' }, { transform: 'none' }], { duration: 250, easing: 'cubic-bezier(.3,1.6,.5,1)' }); return; }
+      const d = $('#info'); if (!d.open) d.showModal(); renderInfo();
+    },
     'info-close': () => $('#info').close(),
     'remove-member': (el) => {
       const m = memberById(el.dataset.id);
@@ -1985,7 +2045,7 @@
     wall: (el) => {
       window.beamWalls.choose(S.room.roomId, Number(el.dataset.i));
       window.beamWalls.apply($('#wall'), Number(el.dataset.i));
-      renderInfo();
+      renderInfo(); renderAside();
     },
     'wall-shuffle': () => {
       const W = window.beamWalls;
@@ -1993,8 +2053,8 @@
       let n = cur; while (n === cur) n = Math.floor(Math.random() * W.count);
       W.choose(S.room.roomId, n);
       W.apply($('#wall'), n);
-      renderInfo();
-      const d = $('#info .dice'); if (d) { d.classList.remove('spin'); void d.offsetWidth; d.classList.add('spin'); }
+      renderInfo(); renderAside();
+      const d = $('#info .dice') || $('#aside .dice'); if (d) { d.classList.remove('spin'); void d.offsetWidth; d.classList.add('spin'); }
       if (navigator.vibrate) navigator.vibrate(8);
     },
     'video-play': (el) => playVideo(el.dataset.id),
@@ -2078,7 +2138,7 @@
   document.addEventListener('drop', (e) => {
     if (!e.dataTransfer || !e.dataTransfer.files.length) return;
     e.preventDefault();
-    const canSendHere = S.screen === 'room' && S.room && S.session && (S.room.type === 'team' ? (S.room.members.find((m) => m.id === S.session.memberId) || {}).canSend : S.session.role === 'host');
+    const canSendHere = S.screen === 'room' && S.room && S.session && (S.room.type === 'team' || S.room.type === 'chat' ? (S.room.members.find((m) => m.id === S.session.memberId) || {}).canSend : S.session.role === 'host');
     sendFiles([...e.dataTransfer.files], canSendHere ? S.session.type : 'single');
   });
 
@@ -2100,7 +2160,7 @@
   // ---------- start ----------
   async function boot() {
     api('/api/config', { auth: false }).then((c) => { S.cfg = { ...S.cfg, ...c }; }).catch(() => {});
-    const hash = /#j=(\d{4})-([a-z0-9]+)/.exec(location.hash);
+    const hash = /#j=([A-Za-z0-9]{4,5})-([a-z0-9]+)/.exec(location.hash);
     if (hash) history.replaceState(null, '', location.pathname);
     if (hash) {
       try {
@@ -2132,7 +2192,7 @@
 
   // An invite link opened while beam is already open.
   window.addEventListener('hashchange', async () => {
-    const m = /#j=(\d{4})-([a-z0-9]+)/.exec(location.hash);
+    const m = /#j=([A-Za-z0-9]{4,5})-([a-z0-9]+)/.exec(location.hash);
     if (!m) return;
     history.replaceState(null, '', location.pathname);
     if (S.session && S.session.code === m[1]) { go('room'); return; }

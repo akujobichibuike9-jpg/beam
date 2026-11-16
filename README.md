@@ -1,7 +1,10 @@
 # beam
 
-Send files between your phone and laptop with a 4-digit code or a QR, or share
-with a whole group in a **team room**. Every file is stored on your Cloudflare
+Send files between your phone and laptop with a 5-character code (letters and
+numbers, no look-alikes like 0/O or 1/I) or a QR. Codes work for **1 hour**.
+Chat one-on-one in a **private chat** (just two people, no sign-up, name optional),
+or share with a whole group in a **team room**. Works on phones and has a
+desktop layout (side nav, two columns, chat info panel) on laptops. Every file is stored on your Cloudflare
 account for **30 days**, then deleted automatically. Admins can see every
 transfer and file at `/admin.html`.
 
@@ -10,7 +13,7 @@ Everything runs on Cloudflare:
 | Piece | What it does |
 |---|---|
 | **Worker** (`src/index.js`) | The API, and serves the app from `public/` |
-| **Durable Object `Room`** (`src/room.js`) | One per 4-digit code: who's in the room, who can send, live updates over WebSockets |
+| **Durable Object `Room`** (`src/room.js`) | One per 5-character code (private chat, team room or transfer): who's in the room, who can send, live updates over WebSockets |
 | **Durable Object `Limiter`** (`src/limiter.js`) | Locks a network out after 5 wrong codes, so codes can't be guessed |
 | **R2 bucket `beam-files`** | The files themselves |
 | **D1 database `beam`** | History: rooms, people, files, downloads, reports, blocks |
@@ -89,7 +92,7 @@ Change these in `wrangler.jsonc` under `vars`, then deploy again:
 | Setting | Default | Meaning |
 |---|---|---|
 | `RETENTION_DAYS` | 30 | Days files and history are kept |
-| `CODE_TTL_MIN` | 5 | Minutes a 1-to-1 code stays valid if no one joins |
+| `CODE_TTL_MIN` | 60 | Minutes a new code stays valid if no one joins |
 | `MAX_FILE_MB` | 2048 | Largest single file |
 | `MAX_TEAM` | 25 | People per team room, including the host |
 | `LOCKOUT_TRIES` | 5 | Wrong codes before a network is locked out |

@@ -31,7 +31,7 @@
   const daysLeft = (t) => Math.max(0, Math.ceil((t - Date.now()) / DAY));
   const kind = (mime) => (/^image\//.test(mime || '') ? 'img' : /^video\//.test(mime || '') ? 'vid' : 'doc');
   const tagFor = (mime, name) => { const k = kind(mime); if (k === 'img') return 'IMG'; if (k === 'vid') return 'VID'; const m = /\.([a-z0-9]{1,4})$/i.exec(name || ''); return m ? m[1].toUpperCase() : 'FILE'; };
-  const mask = (code) => `${String(code).slice(0, 2)}••`;
+  const mask = (code) => `${String(code).slice(0, 2)}${String(code).length > 4 ? '•••' : '••'}`;
 
   const ICON = {
     mark: '<svg width="26" height="26" viewBox="0 0 100 100" aria-hidden="true"><path d="M22 76 C 26 42, 54 26, 72 30" fill="none" stroke="#9CCBF5" stroke-width="10" stroke-linecap="round"/><rect x="62" y="14" width="26" height="26" rx="7" fill="#FFFFFF" transform="rotate(14 75 27)"/></svg>',
@@ -167,7 +167,7 @@
         <section class="panel">
           <h2>Live rooms</h2>
           <div class="scroll"><table class="t"><thead><tr><th>Code</th><th>Type</th><th>Host</th><th>People</th><th>Files</th><th>Size</th><th>Started</th><th><span class="sr">Actions</span></th></tr></thead><tbody>
-          ${o.liveRooms.map((r) => `<tr><td><b class="display">${mask(r.code)}</b></td><td><span class="tag ${r.type === 'team' ? 'dark' : 'blue'}">${r.type === 'team' ? 'Team' : '1 to 1'}</span></td>
+          ${o.liveRooms.map((r) => `<tr><td><b class="display">${mask(r.code)}</b></td><td><span class="tag ${r.type === 'single' ? 'blue' : 'dark'}">${r.type === 'team' ? 'Team' : r.type === 'chat' ? 'Private chat' : 'Transfer'}</span></td>
             <td>${esc(r.host_name || r.host_device || '')}</td><td>${r.people}</td><td>${r.ready}/${r.files}</td><td>${fmtSize(r.bytes)}</td><td class="muted">${ago(r.created_at)}</td>
             <td style="text-align:right"><button class="btn sm lg press" data-act="end-room" data-id="${r.id}">End</button></td></tr>`).join('') || '<tr><td colspan="8" class="muted">No live rooms right now.</td></tr>'}
           </tbody></table></div>
@@ -230,7 +230,7 @@
 
     history() {
       const h = A.hist;
-      const tabs = [['all', 'All'], ['single', '1 to 1'], ['team', 'Team rooms']];
+      const tabs = [['all', 'All'], ['single', 'Transfers'], ['chat', 'Private chats'], ['team', 'Team rooms']];
       let body = loading;
       if (h) {
         const byRoom = (arr) => arr.reduce((m, x) => { (m[x.room_id] = m[x.room_id] || []).push(x); return m; }, {});
@@ -285,7 +285,7 @@
       const s = A.ov ? A.ov.settings : null;
       if (!s) return loading;
       const rows = [
-        ['Code lifetime', 'How long a 4-digit code stays valid', `${s.codeTtlMin} min`, 'CODE_TTL_MIN'],
+        ['Code lifetime', 'How long a room code stays valid if no one joins', `${s.codeTtlMin} min`, 'CODE_TTL_MIN'],
         ['Wrong guesses before lockout', 'Per network', `${s.lockoutTries} tries`, 'LOCKOUT_TRIES'],
         ['Lockout length', 'After too many wrong codes', `${s.lockoutMin} min`, 'LOCKOUT_MIN'],
         ['Max file size', 'Per file', s.maxFileMb >= 1024 ? `${s.maxFileMb / 1024} GB` : `${s.maxFileMb} MB`, 'MAX_FILE_MB'],
@@ -302,7 +302,8 @@
 
   function roomCard(r, members, files, dls, msgs = [], calls = []) {
     const open = A.openRoom === r.id;
-    const team = r.type === 'team';
+    const team = r.type === 'team' || r.type === 'chat';
+    const isChat = r.type === 'chat';
     const host = members.find((m) => m.role === 'host') || {};
     const others = members.filter((m) => m.role !== 'host');
     // Who received everything meant for them?
@@ -318,7 +319,8 @@
     else if (recipients.length && got.length === recipients.length) { status = 'Completed'; dot = '#1F7A4D'; }
     else { status = `Received by ${got.length} of ${recipients.length || others.length}`; dot = '#4A9BE8'; }
     if (reported && r.status !== 'removed') { status += ' · reported'; }
-    const title = team ? `${host.name ? `${host.name}'s` : 'Team'} room` : `${host.device || 'Device'} → ${others[0] ? others[0].device : 'no one joined'}`;
+    const who = (m) => (m ? (m.name || m.device || 'Someone') : 'no one yet');
+    const title = isChat ? `${who(host)} ↔ ${who(others[0])}` : team ? `${host.name ? `${host.name}'s` : 'Team'} room` : `${host.device || 'Device'} → ${others[0] ? others[0].device : 'no one joined'}`;
     const sub = team
       ? `Host: ${host.name || host.device || '?'} · ${members.length} people · ${files.length} file${files.length === 1 ? '' : 's'} · ${msgs.length} message${msgs.length === 1 ? '' : 's'}${calls.length ? ` · ${calls.length} call${calls.length === 1 ? '' : 's'}` : ''} · ${fmtSize(bytes)}`
       : `${files.length} file${files.length === 1 ? '' : 's'} · ${fmtSize(bytes)}`;
@@ -337,7 +339,7 @@
     return `<div class="hist" style="${open ? 'box-shadow:0 12px 30px rgba(40,90,150,.14)' : ''}">
       <button aria-expanded="${open}" data-act="toggle-room" data-id="${r.id}">
         <span class="ic" style="background:${team ? 'var(--primary)' : 'var(--blue-100)'};color:${team ? 'var(--on-primary)' : 'var(--ink)'}">${team ? ICON.team : ICON.arrow}</span>
-        <span style="flex:1 1 240px;min-width:0" class="stack"><span class="row" style="gap:8px;flex-wrap:wrap"><b style="font-size:15px">${esc(title)}</b><span class="tag ${team ? 'dark' : ''}" style="font-size:11px">${team ? 'Team' : '1 to 1'}</span></span><span class="small muted">${esc(sub)}</span></span>
+        <span style="flex:1 1 240px;min-width:0" class="stack"><span class="row" style="gap:8px;flex-wrap:wrap"><b style="font-size:15px">${esc(title)}</b><span class="tag ${team ? 'dark' : ''}" style="font-size:11px">${isChat ? 'Private chat' : team ? 'Team' : 'Transfer'}</span></span><span class="small muted">${esc(sub)}</span></span>
         <span class="row small" style="flex:0 1 220px;gap:8px;font-weight:500"><span class="state-dot" style="background:${dot}"></span>${esc(status)}</span>
         <span class="small muted" style="width:72px;white-space:nowrap">${fmtTime(r.created_at)}</span>
         <span style="transform:rotate(${open ? 180 : 0}deg);transition:transform .2s">${ICON.chev}</span>

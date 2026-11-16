@@ -1,4 +1,4 @@
-// One Room per 4-digit code. It holds who is in the room, who may send,
+// One Room per room code. It holds who is in the room, who may send,
 // which files exist, and pushes live updates to every device over WebSockets.
 // When a room ends or expires, the code becomes free for a new room.
 
@@ -119,7 +119,8 @@ export class Room extends DurableObject {
       mode: 'all',
       status: 'waiting',
       createdAt: now,
-      expiresAt: now + (type === 'team' ? TEAM_MS : cfg.codeTtlMin * 60 * 1000),
+      // Until someone joins, the code is valid for CODE_TTL_MIN (1 hour by default).
+      expiresAt: now + Math.max(type === 'team' ? TEAM_MS : 0, cfg.codeTtlMin * 60 * 1000),
       secret: rid(20),
       maxTeam: cfg.maxTeam,
       maxBytes: cfg.maxFileMb * 1024 * 1024,
@@ -149,17 +150,20 @@ export class Room extends DurableObject {
     if (!this.live()) return { error: 'not_found' };
     const s = this.s;
     const count = Object.values(s.members).filter((m) => !m.removed).length;
-    if (s.type === 'single' && count >= 2) return { error: 'full' };
+    if ((s.type === 'single' || s.type === 'chat') && count >= 2) return { error: 'full' };
     if (s.type === 'team' && count >= s.maxTeam) return { error: 'full' };
     const now = Date.now();
     const id = rid(10);
     const token = rid(32);
-    const canSend = s.type === 'team' && s.mode === 'all';
+    const canSend = s.type === 'chat' || (s.type === 'team' && s.mode === 'all');
     s.members[id] = { id, name, device, role: 'member', canSend, token, ipHash, joinedAt: now, viaQr: !!secret && secret === s.secret };
     if (s.status === 'waiting') {
       s.status = 'active';
       if (s.type === 'single') {
         s.expiresAt = now + SINGLE_ACTIVE_MS;
+        await this.ctx.storage.setAlarm(s.expiresAt);
+      } else if (s.type === 'chat') {
+        s.expiresAt = now + TEAM_MS;
         await this.ctx.storage.setAlarm(s.expiresAt);
       }
       await this.db('UPDATE rooms SET status = ? WHERE id = ?', 'active', s.roomId);
@@ -216,8 +220,8 @@ export class Room extends DurableObject {
     if (!admin) {
       const me = this.member(token);
       if (!me) return { error: 'forbidden' };
-      if (me.role !== 'host') {
-        // A member leaving just removes their sockets.
+      if (me.role !== 'host' && this.s.type !== 'chat') {
+        // A member leaving just removes their sockets (in a private chat either person can end it).
         for (const ws of this.ctx.getWebSockets(me.id)) ws.close(1000, 'left');
         return { ok: true };
       }

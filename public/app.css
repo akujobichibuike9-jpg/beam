@@ -172,11 +172,11 @@ p { margin: 0; }
 .nav a.dark { color: var(--on-primary); }
 
 /* ---------- code ---------- */
-.digits { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.digit { border-radius: 22px; height: 86px; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 46px; }
+.digits { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.digit { border-radius: 20px; height: 78px; display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 40px; }
 .digit-input {
-  width: 100%; height: 96px; border-radius: 24px; border: 1.5px solid var(--border); background: var(--surface); text-align: center;
-  font-family: var(--display); font-weight: 700; font-size: 48px; color: var(--ink); caret-color: var(--blue-500);
+  width: 100%; height: 84px; border-radius: 22px; border: 1.5px solid var(--border); background: var(--surface); text-align: center; text-transform: uppercase;
+  font-family: var(--display); font-weight: 700; font-size: 40px; color: var(--ink); caret-color: var(--blue-500);
 }
 .digit-input:focus { outline: none; border: 2px solid var(--blue-500); box-shadow: 0 0 0 5px #DCEBFA; }
 .qr { align-self: center; border-radius: 30px; padding: 20px; }
@@ -545,3 +545,55 @@ body.in-chat .room-head { background: var(--head-bg); }
 html.theme-anim, html.theme-anim * { transition: background-color .35s ease, color .35s ease, border-color .35s ease !important; }
 [data-theme="dark"] .wall-sw { background-color: #0D131C !important; border-color: #2A3546; }
 [data-theme="dark"] .wall-sw.on { border-color: var(--ink); }
+
+
+/* ======================================================================
+   Layout helpers + desktop / web
+   ====================================================================== */
+.room-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.room-tiles .team-tile { height: auto; min-height: 76px; padding: 12px; border: none; align-items: center; }
+.room-tiles .team-tile .avatars .av { width: 30px; height: 30px; font-size: 11px; }
+.room-tiles .team-tile .avatars .av + .av { margin-left: -12px; }
+@media (max-width: 380px) { .room-tiles { grid-template-columns: 1fr; } }
+.code-big { font-family: var(--display); font-size: 30px; font-weight: 700; letter-spacing: .12em; }
+.home-grid, .cols2 { display: flex; flex-direction: column; gap: 22px; }
+.home-main, .cols2 > .col { display: flex; flex-direction: column; gap: 22px; }
+.home-side { gap: 10px; }
+.aside-panel { display: none; }
+
+@media (min-width: 960px) {
+  :root { --nav-space: 56px; }
+  .app { padding-left: 104px; }
+  body.in-chat .app { padding-left: 0; }
+  .nav { left: 24px; right: auto; top: 50%; bottom: auto; transform: translateY(-50%); flex-direction: column; gap: 12px; }
+  .nav a { width: 56px; height: 56px; }
+  .screen { max-width: 560px; padding-top: 44px; }
+  .screen.home { max-width: 1140px; padding-left: 36px; padding-right: 36px; }
+  .screen.wide2 { max-width: 1000px; padding-left: 36px; padding-right: 36px; }
+  .home-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(320px, .7fr); gap: 44px; align-items: start; }
+  .home-main { gap: 28px; }
+  .home h1 { font-size: 56px; letter-spacing: -0.03em; }
+  .home .tiles { gap: 20px; }
+  .home .tile { height: 290px; padding: 22px; border-radius: 34px; }
+  .home .tile .illus { height: 150px; transform: scale(1.18); transform-origin: 30% 30%; }
+  .home .tile-label strong { font-size: 30px; }
+  .home-side { position: sticky; top: 36px; background: var(--soft); border-radius: 30px; padding: 22px; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); max-height: calc(100vh - 72px); overflow: auto; }
+  .cols2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 44px; align-items: start; }
+  .wide2 .digit { height: 96px; font-size: 50px; }
+  .wide2 .qr svg { width: 200px; height: 200px; }
+  .toast { top: 24px; }
+}
+
+@media (min-width: 1100px) {
+  body.with-aside { padding-right: 380px; }
+  body.with-aside .composer { right: 380px; }
+  body.with-aside .newpill { left: calc(50% - 190px); }
+  .aside-panel {
+    display: block; position: fixed; top: 0; right: 0; bottom: 0; width: 380px; z-index: 18; overflow: auto;
+    padding: 28px 24px calc(28px + env(safe-area-inset-bottom)); background: var(--surface); border-left: 1px solid var(--line);
+  }
+  .aside-panel[hidden] { display: none; }
+  .chat-screen { max-width: 860px; padding-left: 28px; padding-right: 28px; }
+  .room-head { margin: 0 -28px; padding-left: 24px; padding-right: 24px; }
+  .b-col { max-width: min(70%, 520px); }
+}

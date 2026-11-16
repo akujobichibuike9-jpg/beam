@@ -21,9 +21,13 @@ export function rid(n = 12) {
   return out;
 }
 
+// 5 characters from 31 easy-to-read letters and numbers (no 0/O, 1/I/L): ~28.6 million codes.
+export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export function randomCode() {
-  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 10000;
-  return String(n).padStart(4, '0');
+  const bytes = crypto.getRandomValues(new Uint8Array(5));
+  let out = '';
+  for (const b of bytes) out += CODE_ALPHABET[b % CODE_ALPHABET.length];
+  return out;
 }
 
 export async function sha256(text) {
@@ -46,7 +50,7 @@ export function settings(env) {
   const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
   return {
     retentionDays: num(env.RETENTION_DAYS, 30),
-    codeTtlMin: num(env.CODE_TTL_MIN, 5),
+    codeTtlMin: num(env.CODE_TTL_MIN, 60),
     maxFileMb: num(env.MAX_FILE_MB, 2048),
     maxTeam: num(env.MAX_TEAM, 25),
     lockoutTries: num(env.LOCKOUT_TRIES, 5),

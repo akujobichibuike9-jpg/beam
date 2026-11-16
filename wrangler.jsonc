@@ -50,7 +50,7 @@
 
   "vars": {
     "RETENTION_DAYS": "30",
-    "CODE_TTL_MIN": "5",
+    "CODE_TTL_MIN": "60",
     "MAX_FILE_MB": "2048",
     "MAX_TEAM": "25",
     "LOCKOUT_TRIES": "5",

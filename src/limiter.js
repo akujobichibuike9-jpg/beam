@@ -1,5 +1,5 @@
 // One Limiter per network (hashed IP). Counts wrong codes and locks the
-// network out for a while after too many, so 4-digit codes can't be guessed.
+// network out for a while after too many, so room codes can't be guessed.
 
 import { DurableObject } from 'cloudflare:workers';
 

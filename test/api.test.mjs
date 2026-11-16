@@ -35,7 +35,7 @@ async function upload(code, token, name, bytes, type = 'application/octet-stream
 
 // ---- 1-to-1 ----
 const host = await api('/api/rooms', { method: 'POST', body: { type: 'single', device: 'iPhone' } });
-ok(host.status === 200 && /^\d{4}$/.test(host.data.code), `create single room -> ${host.data.code}`);
+ok(host.status === 200 && /^[A-Z0-9]{5}$/.test(host.data.code), `create single room -> ${host.data.code}`);
 const code = host.data.code;
 
 // sender can upload before anyone joins; 25 MB file -> 2 parts
@@ -103,7 +103,7 @@ ok(rep.status === 200, 'Jo reports a file');
 // ---- lockout ----
 let last;
 for (let i = 0; i < 5; i++) {
-  let wrong; do { wrong = String(Math.floor(Math.random() * 10000)).padStart(4, '0'); } while (wrong === code || wrong === tc);
+  let wrong; do { wrong = Array.from({ length: 5 }, () => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 31)]).join(''); } while (wrong === code || wrong === tc);
   last = await api(`/api/rooms/${wrong}/join`, { method: 'POST', body: { device: 'guesser' } });
 }
 ok(last.status === 429, 'locked out after 5 wrong codes');

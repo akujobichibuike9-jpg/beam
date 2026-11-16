@@ -81,7 +81,7 @@ async function handleApi(request, env, ctx, url) {
     const b = await body(request);
     const hash = await ipHash(request, env);
     if (await isBlocked(env, hash)) return err(403, 'blocked', 'This network has been blocked.');
-    const type = b.type === 'team' ? 'team' : 'single';
+    const type = b.type === 'team' || b.type === 'chat' ? b.type : 'single';
     const cfg = settings(env);
     const input = {
       type,
@@ -91,7 +91,7 @@ async function handleApi(request, env, ctx, url) {
       place: place(request),
       cfg
     };
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 10; i++) {
       const code = randomCode();
       const res = await roomStub(env, code).create({ ...input, code });
       if (!res.error) {
@@ -101,9 +101,10 @@ async function handleApi(request, env, ctx, url) {
     return err(503, 'busy', 'All codes are busy right now. Try again in a moment.');
   }
 
-  const m = path.match(/^\/api\/rooms\/(\d{4})(\/.*)?$/);
+  // Codes are 5 letters/numbers (older 4-digit codes still work until they expire).
+  const m = path.match(/^\/api\/rooms\/([A-Za-z0-9]{4,5})(\/.*)?$/);
   if (!m) return err(404, 'not_found');
-  const code = m[1];
+  const code = m[1].toUpperCase();
   const rest = m[2] || '';
   const stub = roomStub(env, code);
   const token = tokenOf(request, url);
