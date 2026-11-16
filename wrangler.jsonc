@@ -6,6 +6,10 @@
   "compatibility_date": "2026-11-01",
   "observability": { "enabled": true },
 
+  // Keep variables added in the Cloudflare dashboard when GitHub deploys a new version.
+  // Passwords should still be added as type "Secret" (those are never removed).
+  "keep_vars": true,
+
   // The app (public/index.html) and admin (public/admin.html) are static files.
   // Requests to /api/* always go to the Worker first.
   "assets": {
