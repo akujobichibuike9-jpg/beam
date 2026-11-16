@@ -87,6 +87,29 @@ The admin API already needs `ADMIN_TOKEN`. For a second lock, put
 Access → Applications → Self-hosted). Only the email addresses you list can
 then reach them.
 
+## End-to-end encryption
+
+Every new transfer, private chat and team room is end-to-end encrypted. Files,
+voice notes, photos, file names, previews and messages are locked on the
+sender's device before upload; Cloudflare and the admin dashboard only ever see
+scrambled data. Calls were already encrypted device-to-device (WebRTC).
+
+- **Room key:** a random 256-bit key made by the device that starts the room. It
+  never reaches the server: it rides in the QR/invite link after `#` (browsers
+  never send that part), or, when someone types the 5-character code, a device
+  already in the room seals it to the newcomer with an ECDH key exchange that
+  the server only relays. The newcomer sees "Unlocking…" until someone is online.
+- **Files:** each file has its own random key and is encrypted in 1 MB AES-GCM
+  blocks (`public/e2e.js`). The service worker (`public/sw.js`) decrypts on the
+  device and serves `/e2e/<file>` with Range support, so videos stream and seek.
+- **Safety code:** chat info shows an 8-digit code derived from the key. If it
+  matches on everyone's devices, nobody (including a tampered server) swapped keys.
+- **Notifications:** the push carries sealed text; the phone's service worker
+  unlocks the preview.
+- **Reports:** reporting shares only that item with the admin: the decrypted text
+  of the message, or that one file's key. Everything else stays locked.
+- Rooms created before this update stay unencrypted until they end.
+
 ## Fast video sending
 
 In private chats and team rooms, big videos are made smaller on the sender's

@@ -450,7 +450,7 @@
         </div>
         ${codeBlock(s)}
         <div class="divider">or scan</div>
-        <div class="qr lg">${qrSvg(s.joinUrl || location.origin, 'QR code to connect')}</div>
+        <div class="qr lg">${qrSvg(joinLink(s), 'QR code to connect')}</div>
         <div class="pill lg" style="align-self:center"><span class="dot blue"></span>${ended ? 'This code has expired' : 'Waiting for the other device…'}</div>
       `}
       </div><div class="col">
@@ -464,7 +464,7 @@
         <button class="btn grow lg press" data-act="add-files">Add more</button>
         <button class="btn grow lg dark press" data-act="end-room">Done</button>
       </div>`}
-      <p class="notice">Files are kept on beam's servers for ${S.cfg.retentionDays} days, then deleted.</p>
+      <p class="notice">${r.e2e ? '🔒 Encrypted on this device before upload. ' : ''}Files are kept on beam's servers for ${S.cfg.retentionDays} days, then deleted.</p>
       </div></div>
     </section>`;
   }
@@ -479,8 +479,9 @@
         <span class="pill"><span class="dot"></span>Connected</span>
       </div>
       <div class="stack" style="gap:6px">
-        <p class="small muted">From ${esc(host ? host.device : 'sender')} · code ${esc(s.code)}</p>
-        <h1 id="h-recv2">${files.length ? (ready.length === files.length ? 'Here they are' : 'Incoming…') : 'Waiting for files…'}</h1>
+        <p class="small muted">${r.e2e ? '🔒 ' : ''}From ${esc(host ? host.device : 'sender')} · code ${esc(s.code)}</p>
+        <h1 id="h-recv2">${r.e2e && !keyOf(s.code) ? 'Unlocking…' : files.length ? (ready.length === files.length ? 'Here they are' : 'Incoming…') : 'Waiting for files…'}</h1>
+        ${r.e2e && !keyOf(s.code) ? '<p class="muted small">Getting the key from the other device. Keep beam open on both.</p>' : ''}
       </div>
       ${files.length ? '' : `<div class="stage" aria-hidden="true">
           <span style="position:absolute;left:50%;bottom:44px;margin-left:-37px;animation:drop 2.8s cubic-bezier(.3,.7,.3,1) infinite">${photoArt(74, 54)}</span>
@@ -650,7 +651,7 @@
     const duo = r.type === 'chat';
     const other = people.find((m) => m.id !== s.memberId);
     const title = duo ? (other ? (other.name || other.device) : 'Private chat') : (isHost ? 'Your room' : `${host.name || 'Team'}'s room`);
-    const sub = ended ? 'Ended' : duo ? (other ? (other.online ? 'online' : 'away') : `waiting · code ${s.code}`) : `${online.length} here · code ${s.code}`;
+    const sub = (r.e2e ? '🔒 ' : '') + (ended ? 'Ended' : duo ? (other ? (other.online ? 'online' : 'away') : `waiting · code ${s.code}`) : `${online.length} here · code ${s.code}`);
     return `<section class="screen chat-screen" aria-labelledby="h-team2">
       <header class="room-head">
         <a href="#" id="rooms-back" class="circle lg press" data-act="rooms" data-unread="${unreadTotal() || ''}" aria-label="All chats and rooms">${I.back}</a>
@@ -669,7 +670,7 @@
         <button class="btn sm lg dark press" data-act="call-start" data-video="${call.video ? 1 : 0}">Join</button>
       </div>` : ''}
       ${isHost && people.length === 1 && !ended ? `<div class="card row enter invite-card" style="margin-top:14px;gap:14px">
-        <div style="background:#fff;border-radius:12px;width:96px;height:96px;flex-shrink:0;padding:4px">${qrSvg(s.joinUrl || location.origin, 'QR code to join')}</div>
+        <div style="background:#fff;border-radius:12px;width:96px;height:96px;flex-shrink:0;padding:4px">${qrSvg(joinLink(s), 'QR code to join')}</div>
         <div class="stack grow" style="gap:6px"><span class="small muted">${duo ? 'Send this code to the person you want to chat with' : 'Invite people with'}</span><span class="display code-big">${esc(s.code)}</span>
         <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm lg dark press" data-act="share">${I.share} Share</button><span class="tiny muted" data-countdown="${r.expiresAt}" data-short="1"></span></div></div>
       </div>` : ''}
@@ -692,11 +693,16 @@
     const me = r.members.find((m) => m.id === meId()) || {};
     const ended = r.status !== 'waiting' && r.status !== 'active';
     box.hidden = false;
-    const state = ended ? 'ended' : (S.rec ? 'rec' : 'text');
+    const locked = r.e2e && !keyOf(S.session.code);
+    const state = ended ? 'ended' : locked ? 'locked' : (S.rec ? 'rec' : 'text');
     if (box.dataset.state === state && box.dataset.room === S.session.code && box.dataset.cansend === String(!!me.canSend)) { updateReplyStrip(); return; }
     box.dataset.state = state; box.dataset.room = S.session.code; box.dataset.cansend = String(!!me.canSend);
     if (ended) {
       box.innerHTML = '<div class="inner"><div class="banner lg" style="justify-content:center">This room has ended</div></div>';
+      return;
+    }
+    if (locked) {
+      box.innerHTML = `<div class="inner"><div class="banner lg unlocking" style="justify-content:center"><span class="lock-anim" aria-hidden="true">🔒</span><span>Unlocking… someone in here needs to be online to hand this device the key.</span></div></div>`;
       return;
     }
     if (state === 'rec') {
@@ -780,7 +786,16 @@
       try { await wsReady(); } finally { S.waitingToSend = false; }
     }
     if (!S.session || S.session.code !== code) return;
-    if (!wsSend({ t: 'chat', text, replyTo: S.replyTo || undefined })) { toast('Reconnecting… try again in a second.', true); return; }
+    let payload = { t: 'chat', text, replyTo: S.replyTo || undefined };
+    if (S.room && S.room.e2e) {
+      const key = keyOf(code);
+      if (!key) { toast('This chat isn\'t unlocked on this device yet.', true); return; }
+      const nonce = Math.random().toString(36).slice(2, 12);
+      pendingPlain.set(nonce, text);
+      payload = { ...payload, text: await E.encText(key, text), nonce };
+      if (!S.session || S.session.code !== code) return;
+    }
+    if (!wsSend(payload)) { toast('Reconnecting… try again in a second.', true); return; }
     ta.value = ''; S.draft = ''; S.replyTo = null;
     ta.dispatchEvent(new Event('input'));
     updateReplyStrip();
@@ -945,11 +960,12 @@
     }
     if (S.playing) { S.playing.audio.pause(); const old = S.playing.id; S.playing = null; repaintVoice(old, 0); }
     if (S.video) S.video.el.pause();
-    const audio = new Audio(`/api/rooms/${S.session.code}/files/${id}?token=${encodeURIComponent(S.session.token)}&inline=1`);
+    const audio = new Audio();
     S.playing = { id, audio };
     audio.addEventListener('timeupdate', () => { const d = audio.duration && Number.isFinite(audio.duration) ? audio.duration : f.duration; repaintVoice(id, d ? audio.currentTime / d : 0, audio.currentTime); });
     audio.addEventListener('ended', () => { if (S.playing && S.playing.id === id) S.playing = null; repaintVoice(id, 0); });
-    audio.play().catch(() => { toast('Couldn\'t play that voice note.', true); S.playing = null; repaintVoice(id, 0); });
+    const fail = () => { toast('Couldn\'t play that voice note.', true); if (S.playing && S.playing.audio === audio) S.playing = null; repaintVoice(id, 0); };
+    srcOf(f).then((u) => { if (!S.playing || S.playing.audio !== audio) return; audio.src = u; audio.play().catch(fail); }).catch(fail);
     repaintVoice(id, 0);
   }
 
@@ -999,7 +1015,8 @@
     v.controls = true; v.playsInline = true; v.autoplay = true; v.preload = 'auto';
     v.setAttribute('playsinline', '');
     if (f.thumb) v.poster = f.thumb;
-    v.src = local || fileUrl(id);
+    if (local) v.src = local;
+    else srcOf(f).then((u) => { v.src = u; v.play().catch(() => {}); }).catch((e) => toast(e.message, true));
     v.addEventListener('error', () => {
       toast('This video can\'t play in this browser. Tap Save to watch it on your device.', true);
       S.video = null;
@@ -1030,11 +1047,11 @@
       </div>
       <div class="viewer-img" data-act="viewer-close">
         ${f.thumb ? `<img class="blur" src="${esc(f.thumb)}" alt="">` : ''}
-        ${f.status === 'ready' ? `<img class="full" src="${esc(fileUrl(id))}" alt="${esc(f.name)}">` : ''}
+        ${f.status === 'ready' ? `<img class="full" alt="${esc(f.name)}">` : ''}
       </div>`;
     document.body.appendChild(d);
     const full = $('.full', d);
-    if (full) full.addEventListener('load', () => full.classList.add('loaded'));
+    if (full) { full.addEventListener('load', () => full.classList.add('loaded')); srcOf(f).then((u) => { full.src = u; }).catch((e) => toast(e.message, true)); }
     S.viewer = d;
     $('.circle', d).focus();
   }
@@ -1076,13 +1093,18 @@
     const duo = r.type === 'chat';
     return `<div class="stack" style="gap:16px">
       <div class="row between"><h2>${duo ? 'Chat info' : 'Room info'}</h2>${inDialog ? `<button class="circle lg press" data-act="info-close" aria-label="Close">${I.close}</button>` : ''}</div>
+      ${r.e2e ? `<div class="e2e-card">
+        <span class="e2e-ic" aria-hidden="true">🔒</span>
+        <div class="grow"><b>End-to-end encrypted</b><div class="small">Messages, files and calls are locked on your devices. Not even beam or Cloudflare can open them.</div>
+        ${keyOf(s.code) ? `<div class="small" style="margin-top:6px">Safety code <b class="mono">${esc(safetyOf(s.code))}</b> · it should match on everyone's device.</div>` : '<div class="small" style="margin-top:6px">Waiting for the key from someone in here…</div>'}</div>
+      </div>` : ''}
       ${duo && !ended ? `<div class="row" style="gap:14px">
-          <div class="qr-box" style="width:96px;height:96px;flex-shrink:0;border-radius:14px;padding:4px">${qrSvg(s.joinUrl || location.origin, 'QR code to join the chat')}</div>
+          <div class="qr-box" style="width:96px;height:96px;flex-shrink:0;border-radius:14px;padding:4px">${qrSvg(joinLink(s), 'QR code to join the chat')}</div>
           <div class="stack grow" style="gap:6px"><span class="display code-big">${esc(s.code)}</span>
           <span class="tiny muted">Private: only 2 people can be in this chat.${people.length < 2 ? ' The code works for 1 hour.' : ''}</span></div>
         </div>` : ''}
       ${!duo && isHost && !ended ? `<div class="row" style="gap:14px">
-          <div class="qr-box" style="width:112px;height:112px;flex-shrink:0;border-radius:14px;padding:4px">${qrSvg(s.joinUrl || location.origin, 'QR code to join the room')}</div>
+          <div class="qr-box" style="width:112px;height:112px;flex-shrink:0;border-radius:14px;padding:4px">${qrSvg(joinLink(s), 'QR code to join the room')}</div>
           <div class="stack grow" style="gap:8px"><span class="display" style="font-size:34px;font-weight:700;letter-spacing:.12em">${esc(s.code)}</span>
           <button class="btn sm lg dark press" data-act="share" style="align-self:flex-start">${I.share} Share invite</button></div>
         </div>
@@ -1439,6 +1461,7 @@
   }
   function forget(code) {
     stopWatch(code);
+    if (window.E2E) E2E.delKey(code);
     delete S.sessions[code];
     delete S.cache[code];
     if (S.session && S.session.code === code) S.session = null;
@@ -1587,12 +1610,17 @@
       w.heard = Date.now();
       ws.addEventListener('message', () => { w.heard = Date.now(); });
       let ping;
-      ws.onopen = () => { w.tries = 0; ws.send(JSON.stringify({ t: 'vis', hidden: document.visibilityState === 'hidden' })); ping = setInterval(() => ws.readyState === 1 && ws.send('ping'), 25000); };
+      ws.onopen = () => { w.tries = 0; ws.send(JSON.stringify({ t: 'vis', hidden: document.visibilityState === 'hidden' })); kxHello(code, ws); ping = setInterval(() => ws.readyState === 1 && ws.send('ping'), 25000); };
       ws.onmessage = (e) => {
         if (e.data === 'pong' || S.watch[code] !== w) return;
         let msg; try { msg = JSON.parse(e.data); } catch { return; }
         const c = cacheOf();
         const label = () => roomLabel(sess, c.room);
+        if (msg.t === 'key-req') { answerReqs(code, [{ id: msg.from, pub: msg.pub }], ws); return; }
+        if (msg.t === 'key-give') { takeKey(code, msg, ws); return; }
+        if (msg.state) applyPlain(code, msg.state);
+        if (msg.t === 'msg' && msg.msg) applyPlain(code, { e2e: !!(c.room && c.room.e2e), messages: [msg.msg], files: [] });
+        if (msg.t === 'state' && msg.state.e2e && msg.state.keyReqs && msg.state.keyReqs.length) setTimeout(() => answerReqs(code, msg.state.keyReqs, ws), 0);
         if (msg.t === 'state') {
           const prev = c.room;
           if (prev && !msg.state.messages) msg.state.messages = prev.messages;
@@ -1607,7 +1635,9 @@
           if (msg.msg.from !== sess.memberId) {
             c.unread++;
             const m = c.room && c.room.members.find((x) => x.id === msg.msg.from);
-            toast(`${sess.type === 'chat' ? label() : `${who(m)} in ${label()}`}: ${msg.msg.text.slice(0, 60)}`);
+            const show = (t) => toast(`${sess.type === 'chat' ? label() : `${who(m)} in ${label()}`}: ${t.slice(0, 60)}`);
+            if (msg.msg._ct && keyOf(code)) E.decText(keyOf(code), msg.msg._ct).then((t) => { plainText.set(msg.msg.id, t); msg.msg.text = t; show(t); refreshRooms(); }).catch(() => show('New message'));
+            else show(msg.msg._locked ? 'New message' : msg.msg.text);
             if (navigator.vibrate) navigator.vibrate(10);
           }
           refreshRooms();
@@ -1641,7 +1671,7 @@
         w.timer = setTimeout(async () => {
           try {
             const snap = await api(`/api/rooms/${code}`, { sess });
-            cacheOf().room = snap.state;
+            cacheOf().room = applyPlain(code, snap.state);
             if (isLive(snap.state)) open(); else stopWatch(code);
             refreshRooms();
           } catch (err) {
@@ -1881,6 +1911,146 @@
   window.addEventListener('pageshow', (e) => { if (e.persisted) heal(true); });
   setInterval(() => { if (document.visibilityState === 'visible') heal(false); }, 15000);
 
+  // ---------- end-to-end encryption ----------
+  // Rooms started on this version are sealed: the server and Cloudflare only ever
+  // store locked data. See public/e2e.js for how keys are made and shared.
+  const E = window.E2E;
+  const canE2E = !!(E && E.supported());
+  const plainText = new Map();    // message id -> text
+  const plainMeta = new Map();    // file id -> { name, type, thumb, ratio, duration, key }
+  const pendingPlain = new Map(); // nonce -> text I just sent
+  const keyOf = (code) => (S.sessions[code] && S.sessions[code].key) || (S.session && S.session.code === code && S.session.key) || null;
+  const roomForCode = (code) => (S.session && S.session.code === code ? S.room : (S.cache[code] && S.cache[code].room) || null);
+  const LOCKED = '🔒 Locked message';
+  function updateSess(code, patch) {
+    if (S.sessions[code]) Object.assign(S.sessions[code], patch);
+    if (S.session && S.session.code === code) Object.assign(S.session, patch);
+    Object.keys(patch).forEach((k) => { if (patch[k] === undefined) { if (S.sessions[code]) delete S.sessions[code][k]; if (S.session && S.session.code === code) delete S.session[k]; } });
+    saveSessions();
+  }
+  // Swap sealed text/details for what we've already unlocked; queue the rest.
+  function applyPlain(code, room) {
+    if (!room || !room.e2e) return room;
+    let todo = false;
+    for (const m of room.messages || []) {
+      if (E.isEnc(m.text)) m._ct = m.text;
+      if (!m._ct) continue;
+      const p = plainText.get(m.id);
+      if (p !== undefined) { m.text = p; m._locked = false; } else { m.text = LOCKED; m._locked = true; todo = true; }
+    }
+    for (const f of room.files || []) {
+      if (!f.enc) continue;
+      const mm = plainMeta.get(f.id);
+      if (mm) { f.name = mm.name; f.type = mm.type; f.thumb = mm.thumb || null; f.ratio = mm.ratio || 0; if (!f.voice) f.duration = mm.duration || 0; f._locked = false; } else { f.name = 'Locked file'; f.type = ''; f.thumb = null; f._locked = true; todo = true; }
+    }
+    if (todo && keyOf(code)) decryptRoom(code);
+    return room;
+  }
+  const decBusy = new Set(); const decAgain = new Set();
+  async function decryptRoom(code) {
+    if (decBusy.has(code)) { decAgain.add(code); return; }
+    decBusy.add(code);
+    let changed = false;
+    try {
+      // Let the caller finish adding the new message/state first.
+      await new Promise((r) => setTimeout(r, 0));
+      const key = keyOf(code);
+      const room = roomForCode(code);
+      if (!key || !room) return;
+      for (const m of room.messages || []) {
+        if (!m._ct || plainText.has(m.id)) continue;
+        try { plainText.set(m.id, await E.decText(key, m._ct)); } catch { plainText.set(m.id, '⚠️ This message could not be unlocked.'); }
+        changed = true;
+      }
+      for (const f of room.files || []) {
+        if (!f.enc || plainMeta.has(f.id)) continue;
+        try {
+          const fileKey = await E.decText(key, f.fk);
+          const meta = JSON.parse(await E.decText(fileKey, f.meta));
+          plainMeta.set(f.id, { name: String(meta.name || 'file'), type: String(meta.type || ''), thumb: typeof meta.thumb === 'string' && meta.thumb.startsWith('data:image/') ? meta.thumb : null, ratio: Number(meta.ratio) || 0, duration: Number(meta.duration) || 0, key: fileKey });
+        } catch { plainMeta.set(f.id, { name: 'File (could not be unlocked)', type: '', thumb: null, key: null }); }
+        changed = true;
+      }
+    } finally { decBusy.delete(code); }
+    if (changed) {
+      const r = roomForCode(code);
+      applyPlain(code, r);
+      if (S.session && S.session.code === code) { if (S.screen === 'room') render(); } else refreshRooms();
+    }
+    if (decAgain.delete(code)) decryptRoom(code);
+  }
+
+  // A new device asks for the room key; a device that has it seals it to them.
+  const answered = new Set();
+  function kxHello(code, ws) {
+    const sess = S.sessions[code];
+    if (sess && sess.kx && !sess.key && ws.readyState === 1) ws.send(JSON.stringify({ t: 'key-req', pub: sess.kx.pub }));
+  }
+  async function answerReqs(code, reqs, ws) {
+    const key = keyOf(code);
+    const sess = S.sessions[code];
+    if (!key || !reqs || !ws || !sess) return;
+    const room = roomForCode(code);
+    for (const r of reqs) {
+      if (!r || r.id === sess.memberId || answered.has(r.pub)) continue;
+      if (room && !room.members.some((m) => m.id === r.id && !m.removed)) continue;
+      answered.add(r.pub);
+      try {
+        const w = await E.wrapFor(r.pub, key);
+        if (ws.readyState === 1) ws.send(JSON.stringify({ t: 'key-give', to: r.id, pub: w.pub, box: w.box }));
+      } catch { answered.delete(r.pub); }
+    }
+  }
+  async function takeKey(code, g, ws) {
+    const sess = S.sessions[code];
+    if (!sess || sess.key || !sess.kx || (g.for && g.for !== sess.kx.pub)) return;
+    try {
+      const key = await E.unwrapFrom(sess.kx.priv, g.pub, g.box);
+      updateSess(code, { key, kx: undefined });
+      E.putKey(code, key);
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'key-ok' }));
+      if (S.session && S.session.code === code) { toast('🔒 Unlocked. Only people in here can read it.'); if (navigator.vibrate) navigator.vibrate([10, 40, 10]); }
+      decryptRoom(code);
+      if (S.session && S.session.code === code && S.screen === 'room') render();
+    } catch { /* not for us or tampered with; wait for another */ }
+  }
+  const safety = {};
+  function safetyOf(code) {
+    const key = keyOf(code);
+    if (!key) return '';
+    if (safety[code] && safety[code].key === key) return safety[code].code;
+    E.safetyCode(key).then((c) => { safety[code] = { key, code: c }; renderInfo(); renderAside(); });
+    return '…';
+  }
+  const joinLink = (s) => (s.joinUrl ? s.joinUrl + (s.key ? `&k=${s.key}` : '') : location.origin);
+
+  // ----- encrypted files: decrypted on this device via the service worker -----
+  const fileApiUrl = (code, id, inline) => {
+    const sess = S.sessions[code] || S.session;
+    return `/api/rooms/${code}/files/${id}?token=${encodeURIComponent(sess.token)}${inline ? '&inline=1' : ''}`;
+  };
+  const swReady = new Set();
+  const blobs = {};
+  async function srcOf(f, download = false) {
+    const code = S.session.code;
+    if (!f.enc) return download ? fileApiUrl(code, f.id, false) : fileApiUrl(code, f.id, true);
+    const mm = plainMeta.get(f.id);
+    if (!mm || !mm.key) throw new Error('This file is still locked.');
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      if (!swReady.has(f.id)) { await E.putFile(f.id, { src: fileApiUrl(code, f.id, true), key: mm.key, size: f.size, type: mm.type, name: mm.name }); swReady.add(f.id); }
+      return `/e2e/${f.id}${download ? '?download=1' : ''}`;
+    }
+    // No service worker (first visit, private mode): decrypt the whole file here.
+    if (!blobs[f.id]) {
+      const res = await fetch(fileApiUrl(code, f.id, true));
+      if (!res.ok || !res.body) throw new Error('Couldn\'t fetch that file.');
+      const parts = [];
+      await E.decStream(mm.key, res.body, 0, (i, b) => { parts.push(b); });
+      blobs[f.id] = URL.createObjectURL(new Blob(parts, { type: mm.type || 'application/octet-stream' }));
+    }
+    return blobs[f.id];
+  }
+
   // After a reload: check the rooms in the background are still there.
   async function restoreRooms() {
     // Older versions only kept one room.
@@ -1888,8 +2058,10 @@
     for (const sess of Object.values(S.sessions)) {
       if (S.session && sess.code === S.session.code) continue;
       if (sess.type !== 'team' && sess.type !== 'chat') { delete S.sessions[sess.code]; continue; }
+      if (sess.key) E.putKey(sess.code, sess.key);
       api(`/api/rooms/${sess.code}`, { sess }).then((snap) => {
         S.cache[sess.code] = { room: snap.state, unread: 0 };
+        applyPlain(sess.code, snap.state);
         if (isLive(snap.state)) watch(sess.code);
         refreshRooms();
       }).catch((e) => { if (e.status === 403 || e.status === 404) forget(sess.code); });
@@ -1898,24 +2070,30 @@
   }
 
   async function createRoom(type) {
-    const res = await api('/api/rooms', { method: 'POST', auth: false, body: { type, name: myName(), device: DEVICE } });
+    const key = canE2E ? E.newKey() : null;
+    const res = await api('/api/rooms', { method: 'POST', auth: false, body: { type, name: myName(), device: DEVICE, e2e: !!key } });
     stashActive();
     S.progress = {}; S.typing = {}; S.replyTo = null; S.draft = ''; S.stick = true;
-    setSession({ code: res.code, token: res.token, memberId: res.memberId, type: res.type, role: 'host', joinUrl: res.joinUrl, expiresAt: res.expiresAt });
-    S.room = res.state;
+    setSession({ code: res.code, token: res.token, memberId: res.memberId, type: res.type, role: 'host', joinUrl: res.joinUrl, expiresAt: res.expiresAt, ...(res.state.e2e && key ? { key } : {}) });
+    if (res.state.e2e && key) E.putKey(res.code, key);
+    S.room = applyPlain(res.code, res.state);
     S.seen = new Set(res.state.files.map((f) => f.id));
     connect();
     return res;
   }
 
-  async function joinRoom(code, secret) {
+  async function joinRoom(code, secret, key) {
     code = String(code).toUpperCase();
-    if (S.sessions[code]) { await switchTo(code); return; }
+    if (S.sessions[code]) { if (key && !keyOf(code)) { updateSess(code, { key, kx: undefined }); E.putKey(code, key); } await switchTo(code); return; }
     const res = await api(`/api/rooms/${code}/join`, { method: 'POST', auth: false, body: { secret, name: myName(), device: DEVICE } });
     stashActive();
     S.progress = {}; S.typing = {}; S.replyTo = null; S.draft = ''; S.stick = true;
-    setSession({ code: res.code, token: res.token, memberId: res.memberId, type: res.type, role: 'member' });
-    S.room = res.state;
+    // Sealed room: the key came in the QR link, or we ask a device in the room for it.
+    let sealed = {};
+    if (res.state.e2e && canE2E) sealed = key ? { key } : { kx: await E.ecdhPair() };
+    setSession({ code: res.code, token: res.token, memberId: res.memberId, type: res.type, role: 'member', ...sealed });
+    if (sealed.key) E.putKey(res.code, sealed.key);
+    S.room = applyPlain(res.code, res.state);
     S.seen = new Set();
     S.pendingFly = res.state.files.filter((f) => f.status !== 'failed').map((f) => f.id);
     res.state.files.forEach((f) => S.seen.add(f.id));
@@ -1937,6 +2115,7 @@
     ws.onopen = () => {
       S.wsTries = 0;
       sendVis();
+      kxHello(s.code, ws);
       ping = setInterval(() => ws.readyState === 1 && ws.send('ping'), 25000);
       if (C.joined) { for (const id of [...C.peers.keys()]) closePeer(id); ws.send(JSON.stringify({ t: 'call-join', video: C.video, muted: C.muted })); }
     };
@@ -1944,6 +2123,8 @@
       if (e.data === 'pong') return;
       let msg; try { msg = JSON.parse(e.data); } catch { return; }
       if (msg.t === 'state') onState(msg.state);
+      else if (msg.t === 'key-req') answerReqs(s.code, [{ id: msg.from, pub: msg.pub }], ws);
+      else if (msg.t === 'key-give') takeKey(s.code, msg, ws);
       else if (msg.t === 'progress') onProgress(msg.fileId, msg.uploaded);
       else if (msg.t === 'ended') onEnded(msg);
       else if (msg.t === 'msg') onMsg(msg.msg);
@@ -1984,6 +2165,10 @@
 
   function onState(state) {
     if (!state) return;
+    if (S.session) {
+      applyPlain(S.session.code, state);
+      if (state.e2e && state.keyReqs && state.keyReqs.length) answerReqs(S.session.code, state.keyReqs, S.ws);
+    }
     const prev = S.room;
     S.room = state;
     const s = S.session;
@@ -2019,6 +2204,8 @@
 
   function onMsg(msg) {
     if (!S.room) return;
+    if (msg.nonce && pendingPlain.has(msg.nonce)) { plainText.set(msg.id, pendingPlain.get(msg.nonce)); pendingPlain.delete(msg.nonce); }
+    if (S.room.e2e && S.session) applyPlain(S.session.code, { e2e: true, messages: [msg], files: [] });
     S.room.messages = S.room.messages || [];
     if (S.room.messages.some((x) => x.id === msg.id)) return;
     S.room.messages.push(msg);
@@ -2097,7 +2284,7 @@
   }
 
   function onEnded(msg) {
-    if (msg.state) S.room = msg.state;
+    if (msg.state) S.room = S.session ? applyPlain(S.session.code, msg.state) : msg.state;
     const s = S.session;
     if (!s) return;
     if (msg.reason === 'removed') toast('This room was closed by beam.', true);
@@ -2196,8 +2383,21 @@
     const s = sess || S.session;
     const prev = meta.voice ? {} : await makePreview(file);
     const thumb = prev.thumb || null;
-    const created = await api(`/api/rooms/${s.code}/files`, { method: 'POST', sess: s, body: { name: file.name, size: file.size, type: file.type, thumb, voice: !!meta.voice, duration: meta.voice ? meta.duration : prev.duration, wave: meta.wave, ratio: prev.ratio } });
+    let body = { name: file.name, size: file.size, type: file.type, thumb, voice: !!meta.voice, duration: meta.voice ? meta.duration : prev.duration, wave: meta.wave, ratio: prev.ratio };
+    // Sealed room: lock the file on this device before anything leaves it.
+    const room0 = roomForCode(s.code);
+    let fileKey = null; let details = null;
+    if (room0 && room0.e2e) {
+      const rk = keyOf(s.code);
+      if (!rk) throw new Error('This chat isn\'t unlocked on this device yet.');
+      fileKey = E.newKey();
+      details = { name: file.name, type: file.type, thumb, ratio: prev.ratio || 0, duration: meta.voice ? meta.duration : (prev.duration || 0) };
+      body = { enc: true, fk: await E.encText(rk, fileKey), meta: await E.encText(fileKey, JSON.stringify(details)), size: E.cipherSize(file.size), voice: !!meta.voice, duration: meta.voice ? meta.duration : 0, wave: meta.wave };
+    }
+    const created = await api(`/api/rooms/${s.code}/files`, { method: 'POST', sess: s, body });
     const fileId = created.fileId;
+    if (fileKey) { plainMeta.set(fileId, { ...details, key: fileKey }); applyPlain(s.code, roomForCode(s.code)); }
+    const upSize = fileKey ? E.cipherSize(file.size) : file.size;
     const partSize = created.partSize || S.cfg.partSize;
     S.local[fileId] = { loaded: 0 };
     // The sender can watch their own video straight away, while it uploads.
@@ -2209,7 +2409,7 @@
       // Split into pieces and send up to PARALLEL at once. Finished pieces are kept,
       // so if the phone pauses the page, sending carries on from where it stopped.
       const pieces = [];
-      for (let off = 0, n = 1; off < file.size; off += partSize, n++) pieces.push({ n, off, size: Math.min(partSize, file.size - off) });
+      for (let off = 0, n = 1; off < upSize; off += partSize, n++) pieces.push({ n, off, size: Math.min(partSize, upSize - off) });
       const live = {};      // piece number -> bytes sent so far for pieces in flight
       let doneBytes = 0;
       const paint = () => {
@@ -2222,7 +2422,7 @@
       const worker = async () => {
         while (next < pieces.length) {
           const piece = pieces[next++];
-          const blob = file.slice(piece.off, piece.off + piece.size);
+          const blob = fileKey ? await E.encPart(fileKey, file, piece.n, partSize) : file.slice(piece.off, piece.off + piece.size);
           let attempt = 0;
           for (;;) {
             await whenVisibleAndOnline();
@@ -2421,13 +2621,27 @@
     const s = S.session;
     const f = S.room && S.room.files.find((x) => x.id === id);
     if (!s || !f || f.status !== 'ready') return;
-    const a = document.createElement('a');
-    a.href = `/api/rooms/${s.code}/files/${id}?token=${encodeURIComponent(s.token)}`;
-    a.download = f.name;
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    const go2 = (href) => {
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = f.name;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    };
+    // Encrypted: the service worker decrypts and serves it as a download. A frame
+    // navigation goes through the worker (a download link can skip it).
+    if (f.enc) {
+      srcOf(f, true).then((href) => {
+        if (!href.startsWith('/e2e/')) { go2(href); return; }
+        const fr = document.createElement('iframe');
+        fr.hidden = true; fr.src = href;
+        document.body.appendChild(fr);
+        setTimeout(() => fr.remove(), 60000);
+      }).catch((e) => toast(e.message, true));
+    }
+    else go2(fileApiUrl(s.code, id, false));
     if (!S.saved.has(id)) {
       S.saved.add(id);
       store.set('beam_saved', [...S.saved].slice(-300));
@@ -2569,7 +2783,8 @@
           <button class="btn sm lg dark press" value="ok">Report</button>
         </div>`, async (d) => {
         try {
-          await api(`/api/rooms/${S.session.code}/files/${el.dataset.id}/report`, { method: 'POST', body: { reason: d.reason } });
+          const mm = f && f.enc ? plainMeta.get(f.id) : null;
+          await api(`/api/rooms/${S.session.code}/files/${el.dataset.id}/report`, { method: 'POST', body: { reason: d.reason, ...(mm && mm.key ? { fileKey: mm.key, plainMeta: JSON.stringify({ name: mm.name, type: mm.type }) } : {}) } });
           toast('Thanks. We\'ll take a look.');
         } catch (e) { toast(e.message, true); }
       });
@@ -2583,7 +2798,7 @@
       try { const r = await api(`/api/rooms/${S.session.code}/members/${el.dataset.id}`, { method: 'POST', body: { canSend: !on } }); onState(r.state); } catch (e) { toast(e.message, true); render(); }
     },
     share: async () => {
-      const url = S.session.joinUrl;
+      const url = joinLink(S.session);
       const text = `Join my beam room with code ${S.session.code}`;
       if (navigator.share) {
         try { await navigator.share({ title: 'beam', text, url }); return; } catch { /* cancelled */ }
@@ -2622,7 +2837,7 @@
           <button class="btn sm lg press" value="cancel" formnovalidate>Cancel</button>
           <button class="btn sm lg dark press" value="ok">Report</button>
         </div>`, async (d) => {
-        try { await api(`/api/rooms/${S.session.code}/messages/${el.dataset.id}/report`, { method: 'POST', body: { reason: d.reason } }); toast('Thanks. We\'ll take a look.'); } catch (e) { toast(e.message, true); }
+        try { await api(`/api/rooms/${S.session.code}/messages/${el.dataset.id}/report`, { method: 'POST', body: { reason: d.reason, ...(m && m._ct && !m._locked ? { plain: m.text } : {}) } }); toast('Thanks. We\'ll take a look.'); } catch (e) { toast(e.message, true); }
       });
     },
     info: () => {
@@ -2769,11 +2984,11 @@
     restoreRooms();
     swInit();
     if (opened && S.session && opened[2]) setTimeout(() => afterOpen(S.session.code, opened[2]), 900);
-    const hash = /#j=([A-Za-z0-9]{4,5})-([a-z0-9]+)/.exec(location.hash);
+    const hash = /#j=([A-Za-z0-9]{4,5})-([a-z0-9]+)(?:&k=([A-Za-z0-9_-]{43}))?/.exec(location.hash);
     if (hash) history.replaceState(null, '', location.pathname);
     if (hash) {
       try {
-        await joinRoom(hash[1], hash[2]);
+        await joinRoom(hash[1], hash[2], hash[3]);
       } catch (e) {
         S.screen = 'receive';
         render();
@@ -2783,7 +2998,8 @@
     } else if (S.session) {
       try {
         const snap = await api(`/api/rooms/${S.session.code}`);
-        S.room = snap.state;
+        if (S.session.key) E.putKey(S.session.code, S.session.key);
+        S.room = applyPlain(S.session.code, snap.state);
         snap.state.files.forEach((f) => S.seen.add(f.id));
         if (snap.state.status === 'waiting' || snap.state.status === 'active') connect();
         S.screen = 'room';
@@ -2803,11 +3019,11 @@
   window.addEventListener('hashchange', async () => {
     const o = /#open=([A-Za-z0-9]{4,5})(?:&answer=(voice|video|ring))?/.exec(location.hash);
     if (o) { history.replaceState(null, '', location.pathname); afterOpen(o[1], o[2]); return; }
-    const m = /#j=([A-Za-z0-9]{4,5})-([a-z0-9]+)/.exec(location.hash);
+    const m = /#j=([A-Za-z0-9]{4,5})-([a-z0-9]+)(?:&k=([A-Za-z0-9_-]{43}))?/.exec(location.hash);
     if (!m) return;
     history.replaceState(null, '', location.pathname);
     if (S.session && S.session.code === m[1].toUpperCase()) { go('room'); return; }
-    try { await joinRoom(m[1], m[2]); } catch (e) { toast(e.message, true); }
+    try { await joinRoom(m[1], m[2], m[3]); } catch (e) { toast(e.message, true); }
   });
 
   boot();

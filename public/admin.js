@@ -264,11 +264,12 @@
         <div class="ad-head"><h1>Reports</h1></div>
         <section class="panel"><h2>To review</h2>
           ${r.reports.map((x) => `<div class="stack" style="background:var(--blue-50);border-radius:18px;padding:14px">
-            <div class="row between small"><b>${x.kind === 'file' ? `${esc(x.file_name || 'File')} · ${fmtSize(x.file_size)}` : x.kind === 'message' ? `Message from ${esc(x.message_author || x.message_device || 'someone')}` : 'Wrong-code lockout'}</b><span class="muted">${fmtDate(x.created_at)} ${fmtTime(x.created_at)}</span></div>
-            ${x.kind === 'message' ? `<div class="card small" style="white-space:pre-wrap">${x.message_status === 'deleted' ? '<i class="muted">Deleted</i>' : esc(x.message_text || '')}</div>` : ''}
+            <div class="row between small"><b>${x.kind === 'file' ? `${x.file_key ? '🔒 ' : ''}${esc(reportedName(x))} · ${fmtSize(x.file_size)}` : x.kind === 'message' ? `Message from ${esc(x.message_author || x.message_device || 'someone')}` : 'Wrong-code lockout'}</b><span class="muted">${fmtDate(x.created_at)} ${fmtTime(x.created_at)}</span></div>
+            ${x.kind === 'message' ? `<div class="card small" style="white-space:pre-wrap">${x.message_status === 'deleted' ? '<i class="muted">Deleted</i>' : isSealed(x.message_text) ? (x.plain ? `<span class="tiny muted">🔒 End-to-end encrypted. Shared by the person who reported it:</span>\n${esc(x.plain)}` : '<i class="muted">🔒 End-to-end encrypted. The reporter\'s device didn\'t share the text.</i>') : esc(x.message_text || '')}</div>` : ''}
+            ${x.kind === 'file' && isSealed(x.file_name) === false && x.file_name === 'Encrypted file' && !x.file_key ? '<span class="tiny muted">🔒 End-to-end encrypted. The reporter\'s device didn\'t share this file\'s key.</span>' : ''}
             <span class="small" style="color:var(--muted-2)">${esc(x.detail || '')}${x.room_code ? ` · room ${esc(x.room_code)}` : ''}${x.blocked ? ' · network blocked' : ''}</span>
             <div class="row" style="flex-wrap:wrap;gap:8px">
-              ${x.file_id ? `<button class="btn sm lg dark press" data-act="report-delete" data-id="${x.id}" data-file="${x.file_id}" data-hash="${esc(x.ip_hash || '')}">Delete file</button><button class="btn sm lg press" data-act="open-file" data-file="${x.file_id}">View file</button>` : ''}
+              ${x.file_id ? `<button class="btn sm lg dark press" data-act="report-delete" data-id="${x.id}" data-file="${x.file_id}" data-hash="${esc(x.ip_hash || '')}">Delete file</button>${x.file_key ? `<button class="btn sm lg press" data-act="view-reported" data-id="${x.id}">View reported file</button>` : x.file_name === 'Encrypted file' ? '' : `<button class="btn sm lg press" data-act="open-file" data-file="${x.file_id}">View file</button>`}` : ''}
               ${x.kind === 'message' && x.message_status !== 'deleted' ? `<button class="btn sm lg dark press" data-act="report-delete-msg" data-id="${x.id}" data-msg="${x.message_id}">Delete message</button>` : ''}
               ${x.kind === 'message' && x.message_ip && !x.blocked ? `<button class="btn sm lg press" data-act="block-ip" data-hash="${esc(x.message_ip)}">Block sender's network</button>` : ''}
               ${x.kind !== 'message' && x.ip_hash && !x.blocked ? `<button class="btn sm lg press" data-act="block-ip" data-hash="${esc(x.ip_hash)}">Block network</button>` : ''}
@@ -353,7 +354,7 @@
         </div>
         ${team ? `<div style="flex-basis:100%"><b class="tiny muted">Chat · ${msgs.length} message${msgs.length === 1 ? '' : 's'}${calls.length ? ` · ${calls.map((c) => `${c.video ? 'video' : 'voice'} call ${fmtTime(c.started_at)} (${c.ended_at ? `${Math.max(1, Math.round((c.ended_at - c.started_at) / 60000))} min` : 'live'}, ${c.peak} people)`).join(', ')}` : ''}</b>
           <div class="stack" style="gap:6px;max-height:320px;overflow:auto;background:var(--white);border:1px solid var(--line);border-radius:14px;padding:10px">
-          ${msgs.map((x) => `<div class="row" style="align-items:flex-start;gap:8px"><span class="tiny muted" style="width:44px;flex-shrink:0;padding-top:2px">${fmtTime(x.created_at)}</span><div class="grow small"><b>${esc(nameOf(x.member_id))}</b> ${esc(x.text)}</div><button class="btn sm press" style="height:30px;padding:0 10px;font-size:12px;background:transparent;border:1px solid var(--line);color:var(--ink)" data-act="delete-msg" data-id="${x.id}">Delete</button></div>`).join('') || '<span class="small muted">No messages.</span>'}
+          ${msgs.map((x) => `<div class="row" style="align-items:flex-start;gap:8px"><span class="tiny muted" style="width:44px;flex-shrink:0;padding-top:2px">${fmtTime(x.created_at)}</span><div class="grow small"><b>${esc(nameOf(x.member_id))}</b> ${isSealed(x.text) ? '<i class="muted">🔒 Encrypted message</i>' : esc(x.text)}</div><button class="btn sm press" style="height:30px;padding:0 10px;font-size:12px;background:transparent;border:1px solid var(--line);color:var(--ink)" data-act="delete-msg" data-id="${x.id}">Delete</button></div>`).join('') || '<span class="small muted">No messages.</span>'}
           </div></div>` : ''}
         <div><b class="tiny muted">Files</b>
           ${files.map((f) => `<a href="#/files" class="person" data-act="open-file" data-file="${f.id}" style="text-decoration:none;color:inherit"><span class="thumb ${kind(f.mime) === 'vid' ? 'vid' : kind(f.mime) === 'doc' ? 'doc' : ''}" style="width:32px;height:32px;font-size:9px">${tagFor(f.mime, f.name)}</span><span class="grow name">${esc(f.name)}</span><span class="tiny muted">${f.status === 'deleted' ? 'deleted' : f.status === 'failed' ? 'failed' : fmtSize(f.size)}</span></a>`).join('') || '<p class="small muted">No files.</p>'}
@@ -378,6 +379,36 @@
   async function loadFiles() { A.files = null; render(); A.files = await api(`/files?kind=${A.fileKind}&q=${encodeURIComponent(A.fileQ)}`); render(); showPreview(); }
   async function loadHistory() { A.hist = null; render(); A.hist = await api(`/history?type=${A.histType}&q=${encodeURIComponent(A.histQ)}`); render(); }
   async function loadReports() { A.reports = await api('/reports'); render(); }
+
+  const isSealed = (t) => typeof t === 'string' && t.startsWith('enc:');
+  function reportedName(x) {
+    if (x.plain) { try { return JSON.parse(x.plain).name || 'File'; } catch { /* not JSON */ } }
+    return x.file_name || 'File';
+  }
+  // A reported encrypted file: the reporter's device shared just this file's key.
+  async function viewReported(x) {
+    const ov = document.createElement('div');
+    ov.className = 'rv-overlay';
+    ov.innerHTML = '<div class="rv-box panel"><p class="muted small">Unlocking the reported file…</p></div>';
+    ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-rv-close]')) { ov.remove(); } });
+    document.body.appendChild(ov);
+    try {
+      const { url } = await api(`/files/${x.file_id}/link`);
+      const res = await fetch(url);
+      if (!res.ok || !res.body) throw new Error('The file is gone.');
+      const parts = [];
+      await E2E.decStream(x.file_key, res.body, 0, (i, b) => { parts.push(b); });
+      let meta = {};
+      try { meta = JSON.parse(x.plain || '{}'); } catch { meta = {}; }
+      const blobUrl = URL.createObjectURL(new Blob(parts, { type: meta.type || 'application/octet-stream' }));
+      const k = kind(meta.type || '');
+      $('.rv-box', ov).innerHTML = `<div class="row between"><b>🔒 ${esc(meta.name || 'Reported file')}</b><button class="btn sm lg press" data-rv-close>Close</button></div>
+        ${k === 'img' ? `<img src="${blobUrl}" alt="Reported image" style="max-width:100%;max-height:70vh;border-radius:12px">` : k === 'vid' ? `<video src="${blobUrl}" controls style="max-width:100%;max-height:70vh;border-radius:12px"></video>` : `<a class="btn sm lg dark press" href="${blobUrl}" download="${esc(meta.name || 'file')}">Download to review</a>`}
+        <p class="tiny muted">Unlocked in this browser with the key the reporter shared. Only this file can be opened.</p>`;
+    } catch (e) {
+      $('.rv-box', ov).innerHTML = `<p class="small">Couldn't unlock it: ${esc(e.message)}</p><button class="btn sm lg press" data-rv-close>Close</button>`;
+    }
+  }
 
   async function showPreview() {
     const box = $('#preview');
@@ -438,6 +469,7 @@
       });
     },
     unblock: async (el) => { try { await api(`/block/${el.dataset.hash}`, { method: 'DELETE' }); loadReports(); } catch (e) { toast(e.message); } },
+    'view-reported': (el) => { const x = A.reports && A.reports.reports.find((r) => r.id === el.dataset.id); if (x) viewReported(x); },
     'report-done': async (el) => { try { await api(`/reports/${el.dataset.id}`, { method: 'POST', body: { status: 'dismissed' } }); await loadOverview(); loadReports(); } catch (e) { toast(e.message); } },
     'delete-msg': (el) => confirmSheet('Delete this message?', 'It disappears from the room for everyone straight away.', 'Delete', async () => {
       try { await api(`/messages/${el.dataset.id}`, { method: 'DELETE' }); toast('Message deleted'); loadHistory(); } catch (e) { toast(e.message); }

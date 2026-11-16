@@ -54,3 +54,6 @@ dl.facts dd { margin: 2px 0 0; font-weight: 600; word-break: break-word; }
 
 [data-theme="dark"] table.t tr.rep td { background: #2A1A1A; }
 [data-theme="dark"] .preview img, [data-theme="dark"] .preview video { background: #000; }
+
+.rv-overlay { position: fixed; inset: 0; z-index: 90; background: rgba(14,17,22,.45); display: grid; place-items: center; padding: 20px; }
+.rv-box { width: min(720px, 100%); max-height: 90vh; overflow: auto; display: flex; flex-direction: column; gap: 12px; }

@@ -30,6 +30,7 @@ const ERRORS = {
   not_found: [404, "That code isn't active. Check it and try again."],
   full: [409, 'This room is full.'],
   forbidden: [403, "You're not in this room."],
+  bad_file: [400, 'That file could not be sent.'],
   bad_sub: [400, 'This browser gave an unusable notification address.'],
   cannot_send: [403, 'The host has turned sending off for you.'],
   too_big: [413, 'That file is over the size limit.'],
@@ -97,7 +98,8 @@ async function handleApi(request, env, ctx, url) {
       device: cleanText(b.device, 60) || 'Unknown device',
       ipHash: hash,
       place: place(request),
-      cfg
+      cfg,
+      e2e: !!b.e2e
     };
     for (let i = 0; i < 10; i++) {
       const code = randomCode();
@@ -170,7 +172,7 @@ async function handleApi(request, env, ctx, url) {
   mm = rest.match(/^\/messages\/([a-z0-9]+)\/report$/);
   if (mm && method === 'POST') {
     const b = await body(request);
-    return fromRoom(await stub.reportMessage({ token, messageId: mm[1], reason: cleanText(b.reason, 300), ipHash: await ipHash(request, env) }));
+    return fromRoom(await stub.reportMessage({ token, messageId: mm[1], reason: cleanText(b.reason, 300), ipHash: await ipHash(request, env), plain: typeof b.plain === 'string' ? b.plain : null }));
   }
 
   // Connection details for calls. With a Cloudflare TURN key set, calls also
@@ -219,14 +221,17 @@ async function handleApi(request, env, ctx, url) {
     if (await isBlocked(env, hash)) return err(403, 'blocked', 'This network has been blocked.');
     return fromRoom(await stub.fileCreate({
       token,
-      name: cleanFileName(b.name),
+      name: b.enc ? 'Encrypted file' : cleanFileName(b.name),
       size: Number(b.size),
       type: cleanText(b.type, 100),
       thumb: b.thumb,
       voice: !!b.voice,
       duration: Number(b.duration) || 0,
       wave: typeof b.wave === 'string' ? b.wave : '',
-      ratio: Number(b.ratio) || 0
+      ratio: Number(b.ratio) || 0,
+      enc: !!b.enc,
+      fk: b.fk,
+      meta: b.meta
     }));
   }
 
@@ -257,7 +262,7 @@ async function handleApi(request, env, ctx, url) {
   mm = rest.match(/^\/files\/([a-z0-9]+)\/report$/);
   if (mm && method === 'POST') {
     const b = await body(request);
-    return fromRoom(await stub.report({ token, fileId: mm[1], reason: cleanText(b.reason, 300), ipHash: await ipHash(request, env) }));
+    return fromRoom(await stub.report({ token, fileId: mm[1], reason: cleanText(b.reason, 300), ipHash: await ipHash(request, env), fileKey: b.fileKey, plainMeta: typeof b.plainMeta === 'string' ? b.plainMeta : null }));
   }
 
   mm = rest.match(/^\/files\/([a-z0-9]+)$/);

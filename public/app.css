@@ -655,3 +655,13 @@ html.theme-anim, html.theme-anim * { transition: background-color .35s ease, col
    them is pressed (otherwise the button slides out from under the mouse on desktop). */
 .room-row.press:active { transform: scale(.985); }
 .press:active:has(button:active, a:active) { transform: none; }
+
+/* ---------- end-to-end encryption ---------- */
+.e2e-card { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 18px; background: var(--blue-50, #EAF3FD); color: var(--ink); }
+.e2e-card .small { color: var(--muted-2); line-height: 1.45; }
+.e2e-ic { font-size: 22px; line-height: 1; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .06em; color: var(--ink); }
+.unlocking { gap: 10px; text-align: left; }
+.lock-anim { display: inline-block; animation: lockwig 1.6s ease-in-out infinite; }
+@keyframes lockwig { 0%, 70%, 100% { transform: rotate(0); } 78% { transform: rotate(-14deg); } 86% { transform: rotate(12deg); } 94% { transform: rotate(-6deg); } }
+@media (prefers-reduced-motion: reduce) { .lock-anim { animation: none; } }

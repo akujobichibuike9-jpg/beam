@@ -88,13 +88,16 @@ export class Room extends DurableObject {
   }
   fileLine(f) {
     if (f.voice) return '🎤 Voice note';
+    if (f.enc) return '📎 Sent a file';
     if (/^image\//.test(f.type || '')) return '📷 Photo';
     if (/^video\//.test(f.type || '')) return '🎥 Video';
     return `📎 ${f.name}`;
   }
-  notifyItem(me, body) {
+  notifyItem(me, body, enc) {
     const room = this.roomTitle();
-    this.notify(me.id, { kind: 'msg', title: room ? `${this.label(me)} · ${room}` : this.label(me), body, tag: `beam-${this.s.code}` });
+    // Push messages can only carry ~4 KB, so long sealed texts get the generic line.
+    const extra = enc && enc.length <= 3000 ? { enc } : {};
+    this.notify(me.id, { kind: 'msg', title: room ? `${this.label(me)} · ${room}` : this.label(me), body, tag: `beam-${this.s.code}`, ...extra });
   }
   publicState() {
     const s = this.s;
@@ -103,6 +106,8 @@ export class Room extends DurableObject {
       code: s.code,
       roomId: s.roomId,
       type: s.type,
+      e2e: !!s.e2e,
+      keyReqs: Object.entries(s.keyReqs || {}).filter(([id]) => s.members[id] && !s.members[id].removed).map(([id, pub]) => ({ id, pub })),
       mode: s.mode,
       status: this.live() ? s.status : (s.status === 'waiting' || s.status === 'active' ? 'expired' : s.status),
       expiresAt: s.expiresAt,
@@ -116,7 +121,8 @@ export class Room extends DurableObject {
           id: f.id, name: f.name, size: f.size, type: f.type, status: f.status,
           uploaded: f.uploaded, senderId: f.senderId, thumb: f.thumb || null,
           createdAt: f.createdAt, downloadedBy: f.downloadedBy || [],
-          voice: !!f.voice, duration: f.duration || 0, wave: f.wave || '', ratio: f.ratio || 0
+          voice: !!f.voice, duration: f.duration || 0, wave: f.wave || '', ratio: f.ratio || 0,
+          enc: !!f.enc, fk: f.fk || null, meta: f.meta || null
         })),
       messages: (s.messages || []).slice(-200),
       reactions: s.reactions || {},
@@ -163,7 +169,7 @@ export class Room extends DurableObject {
   }
 
   // ---------- room lifecycle ----------
-  async create({ code, type, name, device, ipHash, place, cfg }) {
+  async create({ code, type, name, device, ipHash, place, cfg, e2e }) {
     await this.load();
     if (this.live()) return { error: 'taken' };
     const now = Date.now();
@@ -188,7 +194,10 @@ export class Room extends DurableObject {
       files: {},
       messages: [],
       reactions: {},
-      call: null
+      call: null,
+      e2e: !!e2e,          // end-to-end encrypted: the server only ever sees sealed data
+      keyReqs: {},         // memberId -> public key of a device waiting for the room key
+      keyGifts: {}         // memberId -> sealed room key from another device
     };
     await this.save();
     await this.ctx.storage.setAlarm(this.s.expiresAt);
@@ -333,7 +342,7 @@ export class Room extends DurableObject {
   }
 
   // ---------- files ----------
-  async fileCreate({ token, name, size, type, thumb, voice, duration, wave, ratio }) {
+  async fileCreate({ token, name, size, type, thumb, voice, duration, wave, ratio, enc, fk, meta }) {
     await this.load();
     if (!this.live()) return { error: 'room_closed' };
     const me = this.member(token);
@@ -341,6 +350,14 @@ export class Room extends DurableObject {
     if (!me.canSend) return { error: 'cannot_send' };
     if (!(size >= 0) || size > this.s.maxBytes) return { error: 'too_big' };
     if (Object.keys(this.s.files).length >= MAX_FILES) return { error: 'too_many_files' };
+    const sealed = !!enc;
+    if (sealed) {
+      // The name, type and preview are inside `meta`, sealed on the sender's device.
+      if (typeof fk !== 'string' || !/^enc:[A-Za-z0-9_-]{40,200}$/.test(fk)) return { error: 'bad_file' };
+      if (typeof meta !== 'string' || !/^enc:[A-Za-z0-9_-]+$/.test(meta) || meta.length > 60000) return { error: 'bad_file' };
+      name = 'Encrypted file'; type = 'application/octet-stream'; thumb = null; ratio = 0;
+      if (!voice) duration = 0;
+    }
     const id = rid(14);
     const key = `rooms/${this.s.roomId}/${id}`;
     const upload = await this.env.FILES.createMultipartUpload(key, {
@@ -355,7 +372,8 @@ export class Room extends DurableObject {
       voice: !!voice,
       duration: voice || /^video\//.test(type || '') ? Math.max(0, Math.min(86400, Number(duration) || 0)) : 0,
       ratio: Number(ratio) > 0.2 && Number(ratio) < 5 ? Math.round(Number(ratio) * 1000) / 1000 : 0,
-      wave: voice && typeof wave === 'string' ? wave.replace(/[^0-9]/g, '').slice(0, 64) : ''
+      wave: voice && typeof wave === 'string' ? wave.replace(/[^0-9]/g, '').slice(0, 64) : '',
+      enc: sealed, fk: sealed ? fk : null, meta: sealed ? meta : null
     };
     this.s.files[id] = f;
     await this.save();
@@ -448,14 +466,18 @@ export class Room extends DurableObject {
     return { key: f.key, name: f.name, type: f.type, size: f.size };
   }
 
-  async report({ token, fileId, reason, ipHash }) {
+  async report({ token, fileId, reason, ipHash, fileKey, plainMeta }) {
     await this.load();
     const me = this.member(token);
     const f = this.s && this.s.files[fileId];
     if (!me || !f) return { error: 'forbidden' };
     await this.db('UPDATE files SET reported = 1 WHERE id = ?', f.id);
-    await this.db('INSERT INTO reports (id, kind, file_id, room_id, ip_hash, detail, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      rid(12), 'file', f.id, this.s.roomId, ipHash, reason || 'Reported by a receiver', 'open', Date.now());
+    // For encrypted files, the reporter's device hands over that one file's key
+    // (never the room key), so the admin can review just the reported file.
+    const k = f.enc && typeof fileKey === 'string' && /^[A-Za-z0-9_-]{43}$/.test(fileKey) ? fileKey : null;
+    const pm = f.enc && k && typeof plainMeta === 'string' ? plainMeta.slice(0, 2000) : null;
+    await this.db('INSERT INTO reports (id, kind, file_id, room_id, ip_hash, detail, status, created_at, file_key, plain) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      rid(12), 'file', f.id, this.s.roomId, ipHash, reason || 'Reported by a receiver', 'open', Date.now(), k, pm);
     return { ok: true };
   }
 
@@ -487,6 +509,8 @@ export class Room extends DurableObject {
     this.ctx.acceptWebSocket(server, [me.id]);
     server.serializeAttachment({ hidden: url.searchParams.get('hidden') === '1' });
     server.send(JSON.stringify({ t: 'state', state: this.publicState(), memberId: me.id }));
+    const gift = this.s.keyGifts && this.s.keyGifts[me.id];
+    if (gift) server.send(JSON.stringify({ t: 'key-give', ...gift }));
     this.pushState();
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -503,6 +527,9 @@ export class Room extends DurableObject {
     const live = this.live();
     switch (m.t) {
       case 'vis': ws.serializeAttachment({ hidden: !!m.hidden }); return undefined;
+      case 'key-req': return this.keyReq(me, m);
+      case 'key-give': return this.keyGive(me, m);
+      case 'key-ok': return this.keyOk(me);
       case 'chat': return live && this.chat(me, m);
       case 'react': return this.react(me, m);
       case 'typing': return live && this.broadcastExcept(me.id, { t: 'typing', from: me.id });
@@ -526,9 +553,39 @@ export class Room extends DurableObject {
     }, 50);
   }
 
+  // ---------- handing the room key between devices (sealed; we only relay) ----------
+  async keyReq(me, m) {
+    const s = this.s;
+    if (!s.e2e || typeof m.pub !== 'string' || !/^[A-Za-z0-9_-]{87}$/.test(m.pub)) return;
+    s.keyReqs = s.keyReqs || {};
+    s.keyReqs[me.id] = m.pub;
+    await this.save();
+    this.broadcastExcept(me.id, { t: 'key-req', from: me.id, pub: m.pub });
+  }
+  async keyGive(me, m) {
+    const s = this.s;
+    const to = String(m.to || '');
+    if (!s.e2e || !s.members[to] || to === me.id || !s.keyReqs || !s.keyReqs[to]) return;
+    if (typeof m.pub !== 'string' || !/^[A-Za-z0-9_-]{87}$/.test(m.pub) || typeof m.box !== 'string' || !/^[A-Za-z0-9_-]{40,120}$/.test(m.box)) return;
+    s.keyGifts = s.keyGifts || {};
+    s.keyGifts[to] = { from: me.id, pub: m.pub, box: m.box, for: s.keyReqs[to] };
+    await this.save();
+    this.sendTo(to, { t: 'key-give', ...s.keyGifts[to] });
+  }
+  async keyOk(me) {
+    const s = this.s;
+    if (!s.keyReqs || (!s.keyReqs[me.id] && !(s.keyGifts || {})[me.id])) return;
+    delete s.keyReqs[me.id];
+    if (s.keyGifts) delete s.keyGifts[me.id];
+    await this.save();
+    this.pushState();
+  }
+
   // ---------- chat ----------
   async chat(me, m) {
-    const text = String(m.text || '').replace(/\u0000/g, '').trim().slice(0, MAX_TEXT);
+    const rawText = String(m.text || '').replace(/\u0000/g, '').trim();
+    // Sealed messages are longer than the text inside (base64 + 28 bytes).
+    const text = rawText.startsWith('enc:') ? (/^enc:[A-Za-z0-9_-]+$/.test(rawText) && rawText.length <= 12000 ? rawText : '') : rawText.slice(0, MAX_TEXT);
     if (!text) return;
     // Simple flood control: at most 8 messages per 10 seconds each.
     const now = Date.now();
@@ -543,7 +600,8 @@ export class Room extends DurableObject {
     if (msgs.length > MAX_MESSAGES) msgs.splice(0, msgs.length - MAX_MESSAGES);
     await this.save();
     this.broadcast({ t: 'msg', msg });
-    this.notifyItem(me, text.length > 140 ? `${text.slice(0, 140)}…` : text);
+    if (text.startsWith('enc:')) this.notifyItem(me, 'New message', text);
+    else this.notifyItem(me, text.length > 140 ? `${text.slice(0, 140)}…` : text);
     await this.db('INSERT INTO messages (id, room_id, member_id, text, reply_to, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       msg.id, this.s.roomId, me.id, text, replyTo, now);
   }
@@ -578,13 +636,15 @@ export class Room extends DurableObject {
     return { ok: true };
   }
 
-  async reportMessage({ token, messageId, reason, ipHash }) {
+  async reportMessage({ token, messageId, reason, ipHash, plain }) {
     await this.load();
     const me = this.member(token);
     const msg = me && (this.s.messages || []).find((x) => x.id === messageId);
     if (!msg) return { error: 'forbidden' };
-    await this.db('INSERT INTO reports (id, kind, message_id, room_id, ip_hash, detail, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      rid(12), 'message', msg.id, this.s.roomId, ipHash, reason || 'Reported by someone in the room', 'open', Date.now());
+    // Encrypted message: the reporter's device includes the text it decrypted.
+    const pt = msg.text.startsWith('enc:') && typeof plain === 'string' ? plain.slice(0, 4000) : null;
+    await this.db('INSERT INTO reports (id, kind, message_id, room_id, ip_hash, detail, status, created_at, plain) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      rid(12), 'message', msg.id, this.s.roomId, ipHash, reason || 'Reported by someone in the room', 'open', Date.now(), pt);
     return { ok: true };
   }
 
