@@ -87,6 +87,17 @@ The admin API already needs `ADMIN_TOKEN`. For a second lock, put
 Access → Applications → Self-hosted). Only the email addresses you list can
 then reach them.
 
+## Fast video sending
+
+In private chats and team rooms, big videos are made smaller on the sender's
+device before upload, like WhatsApp: 720p H.264 at ~2 Mbit/s (about 15 MB a
+minute), using the device's own video encoder (WebCodecs, via the bundled
+[Mediabunny](https://mediabunny.dev) library, MPL-2.0, loaded only when needed).
+A 50 MB 1080p clip goes as ~5 MB. While one video uploads, the next is already
+being shrunk. People can tap **Send original** while it shrinks, or turn
+**Smaller videos** off in chat info. One-off phone↔laptop transfers always send
+the original file. If a browser can't convert a video, the original is sent.
+
 ## Notifications and installing as an app
 
 beam can be installed (Chrome: install icon in the address bar; Android: "Install

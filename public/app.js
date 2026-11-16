@@ -1100,6 +1100,10 @@
         <div class="wall-grid" role="group" aria-label="Chat background">${Array.from({ length: window.beamWalls.count }, (_, i) => window.beamWalls.swatch(i, i === window.beamWalls.pick(r.roomId))).join('')}</div>
         <span class="tiny muted">Only changes it on this device.</span>
       </div>` : ''}
+      <div class="item" style="min-height:60px;background:var(--blue-50);gap:12px">
+        <div class="grow"><div class="name">Smaller videos</div><div class="meta">${store.get('beam_video_original', false) ? 'Off: sends original quality (slower)' : 'On: 720p, sends much faster'}</div></div>
+        <button class="switch" role="switch" aria-checked="${!store.get('beam_video_original', false)}" aria-label="Make videos smaller so they send faster" data-act="video-quality" data-on="${!store.get('beam_video_original', false)}"><span></span></button>
+      </div>
       <div class="stack" style="gap:8px">
         <b class="small" style="color:var(--muted-2)">${duo ? 'In this chat' : `People · ${people.length}`}</b>
         ${people.map((m) => `<div class="item" style="min-height:56px;background:var(--blue-50)">
@@ -2301,6 +2305,54 @@
     if (S.uploading) { e.preventDefault(); e.returnValue = ''; }
   });
 
+  // ---------- smaller videos, sent faster ----------
+  const isBigVideo = (f) => (/^video\//.test(f.type || '') || /\.(mp4|mov|m4v|webm|mkv|3gp)$/i.test(f.name)) && f.size > 8 * 1024 * 1024;
+  let squeezeMod = null;
+  function prepare(item) {
+    if (!item.ready) item.ready = item.meta && item.meta.compress ? squeeze(item.file) : Promise.resolve(item.file);
+    return item.ready;
+  }
+  async function squeeze(file) {
+    try { squeezeMod = squeezeMod || await import('/compress.js'); } catch { return file; }
+    if (!squeezeMod.supported()) return file;
+    const job = { name: file.name, p: 0, cancel: null, original: false };
+    S.squeeze = job;
+    renderSqueeze();
+    try {
+      const out = await squeezeMod.compressVideo(file, {
+        onStart: (c) => { job.cancel = c; },
+        onProgress: (p) => { job.p = p; renderSqueeze(); }
+      });
+      if (job.original || !out) return file;
+      job.done = `${fmtSize(file.size)} → ${fmtSize(out.size)}`;
+      renderSqueeze();
+      await sleep(900);
+      return out;
+    } catch {
+      return file; // cancelled or this video can't be converted here: send the original
+    } finally {
+      if (S.squeeze === job) { S.squeeze = null; renderSqueeze(); }
+    }
+  }
+  function renderSqueeze() {
+    let el = $('#squeeze');
+    const j = S.squeeze;
+    if (!j) { if (el) { el.classList.remove('in'); setTimeout(() => { if (!S.squeeze) el.hidden = true; }, 250); } return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'squeeze';
+      el.setAttribute('role', 'status');
+      el.innerHTML = `<div class="sq-card lg"><span class="sq-ic" aria-hidden="true">${I.play}</span><div class="grow" style="min-width:0"><b class="sq-t"></b><div class="sq-bar"><i></i></div></div><button class="btn sm lg press sq-orig" data-act="squeeze-original">Send original</button></div>`;
+      document.body.appendChild(el);
+    }
+    el.hidden = false;
+    requestAnimationFrame(() => el.classList.add('in'));
+    const pct = Math.round(j.p * 100);
+    $(".sq-t", el).textContent = j.done ? `Smaller: ${j.done}` : `Shrinking video ${pct}%`;
+    $('.sq-bar i', el).style.width = `${j.done ? 100 : pct}%`;
+    $('.sq-orig', el).hidden = !!j.done;
+  }
+
   async function runQueue() {
     if (S.uploading) return;
     S.uploading = true;
@@ -2309,8 +2361,11 @@
     try {
       while (S.queue.length) {
         const item = S.queue.shift();
-        const file = item.file || item;
+        let file = item.file || item;
         try {
+          file = await prepare(item);
+          // Start shrinking the next video while this one uploads.
+          if (S.queue[0]) prepare(S.queue[0]);
           await uploadOne(file, item.meta || {}, item.sess);
         } catch (e) {
           toast(`${file.name}: ${e.message}`, true);
@@ -2347,7 +2402,10 @@
         await createRoom(type);
       } catch (e) { toast(e.message, true); return; }
     }
-    S.queue.push(...files.map((file) => ({ file, sess: S.session, meta: {} })));
+    // In chats and rooms, big videos are made smaller first (like WhatsApp), unless
+    // you've chosen original quality. 1-to-1 transfers always send the original.
+    const shrink = (S.session.type === 'chat' || S.session.type === 'team') && !store.get('beam_video_original', false);
+    S.queue.push(...files.map((file) => ({ file, sess: S.session, meta: { compress: shrink && isBigVideo(file) } })));
     if (S.screen !== 'room') go('room'); else { S.stick = true; render(); }
     runQueue();
   }
@@ -2468,6 +2526,8 @@
       } catch (e) { toast(e.message, true); }
     },
     'ring-answer': () => answerRing(),
+    'squeeze-original': () => { const j = S.squeeze; if (j) { j.original = true; if (j.cancel) j.cancel(); } },
+    'video-quality': (el) => { const orig = el.dataset.on === 'true'; store.set('beam_video_original', orig); toast(orig ? 'Videos will be sent in original quality' : 'Videos will be made smaller so they send faster'); renderInfo(); renderAside(); },
     'ring-decline': () => stopRing(),
     'open-room': (el) => switchTo(el.dataset.code),
     'forget-room': (el) => { const c = el.dataset.code; if (S.session && S.session.code === c) { disconnect(); S.room = null; } forget(c); render(); },

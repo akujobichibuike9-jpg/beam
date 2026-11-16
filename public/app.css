@@ -635,3 +635,18 @@ html.theme-anim, html.theme-anim * { transition: background-color .35s ease, col
 .steps { margin: 4px 0 14px; padding-left: 20px; line-height: 1.8; }
 .notif-nudge .btn { white-space: nowrap; flex-shrink: 0; }
 .notif-nudge { padding-right: 8px; }
+
+/* ---------- making a video smaller ---------- */
+#squeeze { position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 108px); z-index: 70; display: flex; justify-content: center; pointer-events: none; opacity: 0; transform: translateY(16px); transition: opacity .25s, transform .3s cubic-bezier(.3,1.4,.5,1); }
+#squeeze.in { opacity: 1; transform: none; }
+#squeeze[hidden] { display: none; }
+.sq-card { pointer-events: auto; width: min(440px, calc(100% - 24px)); display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 12px; border-radius: 24px; background: var(--surface); box-shadow: 0 14px 40px rgba(14,17,22,.16); }
+.sq-card b { font-size: 14px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sq-ic { width: 38px; height: 38px; border-radius: 12px; background: var(--blue-100, #DCEBFA); color: var(--ink); display: grid; place-items: center; flex-shrink: 0; animation: squish 1.1s ease-in-out infinite; }
+.sq-ic svg { width: 18px; height: 18px; }
+.sq-bar { height: 6px; border-radius: 99px; background: var(--blue-50, #EAF3FD); margin-top: 7px; overflow: hidden; }
+.sq-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #9CCBF5, #2F8CF0); border-radius: 99px; transition: width .25s; }
+.sq-orig { white-space: nowrap; flex-shrink: 0; }
+@keyframes squish { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.12, .86); } }
+@media (min-width: 1100px) { body.with-aside #squeeze { right: 380px; } }
+@media (prefers-reduced-motion: reduce) { .sq-ic { animation: none; } }
