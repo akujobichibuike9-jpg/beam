@@ -415,3 +415,25 @@ dialog.sheet::backdrop { background: rgba(14, 17, 22, .25); -webkit-backdrop-fil
 .callpill .dot { background: #4ADE80; }
 body.in-chat .toast { top: calc(env(safe-area-inset-top) + 80px); }
 @media (max-width: 440px) { .room-head .head-avs { display: none; } }
+
+/* chat wallpapers */
+.wall { position: fixed; inset: 0; z-index: -1; pointer-events: none; background-color: var(--wall-base, var(--bg)); transition: background-color .5s ease; }
+.wall::before {
+  content: ""; position: absolute; inset: -400px; background-image: var(--wall-img); background-size: var(--wall-size, 200px);
+  animation: drift 90s linear infinite;
+}
+.wall.swap::before { animation: drift 90s linear infinite, wallIn .6s ease-out; }
+@keyframes drift { from { transform: translate(0, 0); } to { transform: translate(var(--wall-size, 200px), calc(var(--wall-size, 200px) * -1)); } }
+@keyframes wallIn { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; } }
+body.in-chat { background: transparent; }
+body.in-chat .room-head { background: rgba(238, 245, 252, 0.72); }
+.wall-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.wall-sw { aspect-ratio: 1; border-radius: 16px; border: 2px solid #fff; cursor: pointer; box-shadow: 0 2px 6px rgba(40,90,150,.12); transition: transform .2s cubic-bezier(.3,1.7,.5,1); }
+.wall-sw:hover { transform: scale(1.06); }
+.wall-sw.on { border-color: var(--ink); box-shadow: 0 0 0 3px var(--blue-200); }
+.dice.spin { animation: spin .6s cubic-bezier(.3,1.4,.5,1); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.b-time, .sys, .day { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.b-time { background: rgba(255,255,255,.55); border-radius: 999px; padding: 1px 8px; align-self: flex-start; }
+.b-row.me .b-time { align-self: flex-end; }
+.b-name { background: rgba(255,255,255,.55); border-radius: 999px; padding: 1px 10px; align-self: flex-start; }

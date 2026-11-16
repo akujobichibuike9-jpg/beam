@@ -200,6 +200,9 @@
     const y = window.scrollY;
     app.innerHTML = fn();
     document.body.classList.toggle('in-chat', chat);
+    const wall = $('#wall');
+    wall.hidden = !chat;
+    if (chat && window.beamWalls) window.beamWalls.apply(wall, window.beamWalls.pick(S.room.roomId));
     S.fresh.clear();
     renderNav();
     renderComposer();
@@ -907,6 +910,12 @@
           </div>
           <span class="tiny muted">Everyone can always chat and join calls.</span>
         </div>` : `<p class="small muted">Code ${esc(s.code)} · ${me.canSend ? 'You can share files and voice notes.' : 'You can chat and join calls. Only the host shares files here.'}</p>`}
+      ${window.beamWalls ? `<div class="stack" style="gap:8px">
+        <div class="row between"><b class="small" style="color:#33404F">Background</b>
+          <button class="btn sm lg press" data-act="wall-shuffle"><span class="dice" aria-hidden="true">🎲</span> Shuffle</button></div>
+        <div class="wall-grid" role="group" aria-label="Chat background">${Array.from({ length: window.beamWalls.count }, (_, i) => window.beamWalls.swatch(i, i === window.beamWalls.pick(r.roomId))).join('')}</div>
+        <span class="tiny muted">Only changes it on this device.</span>
+      </div>` : ''}
       <div class="stack" style="gap:8px">
         <b class="small" style="color:#33404F">People · ${people.length}</b>
         ${people.map((m) => `<div class="item" style="min-height:56px;background:var(--blue-50)">
@@ -1819,6 +1828,21 @@
         </div>`, async () => {
         try { const r = await api(`/api/rooms/${S.session.code}/members/${el.dataset.id}/remove`, { method: 'POST' }); onState(r.state); toast('Removed'); } catch (e) { toast(e.message, true); }
       });
+    },
+    wall: (el) => {
+      window.beamWalls.choose(S.room.roomId, Number(el.dataset.i));
+      window.beamWalls.apply($('#wall'), Number(el.dataset.i));
+      renderInfo();
+    },
+    'wall-shuffle': () => {
+      const W = window.beamWalls;
+      const cur = W.pick(S.room.roomId);
+      let n = cur; while (n === cur) n = Math.floor(Math.random() * W.count);
+      W.choose(S.room.roomId, n);
+      W.apply($('#wall'), n);
+      renderInfo();
+      const d = $('#info .dice'); if (d) { d.classList.remove('spin'); void d.offsetWidth; d.classList.add('spin'); }
+      if (navigator.vibrate) navigator.vibrate(8);
     },
     'call-start': (el) => startCall(el.dataset.video === '1'),
     'call-leave': () => leaveCall(),
