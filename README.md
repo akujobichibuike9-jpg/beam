@@ -3,7 +3,9 @@
 Send files between your phone and laptop with a 5-character code (letters and
 numbers, no look-alikes like 0/O or 1/I) or a QR. Codes work for **1 hour**.
 Chat one-on-one in a **private chat** (just two people, no sign-up, name optional),
-or share with a whole group in a **team room**. Works on phones and has a
+or share with a whole group in a **team room**. You can be in several at once
+(say a private chat and two team rooms) and switch between them; rooms you're
+not looking at stay connected and show unread counts. Works on phones and has a
 desktop layout (side nav, two columns, chat info panel) on laptops. Every file is stored on your Cloudflare
 account for **30 days**, then deleted automatically. Admins can see every
 transfer and file at `/admin.html`.

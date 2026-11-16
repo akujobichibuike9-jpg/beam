@@ -597,3 +597,18 @@ html.theme-anim, html.theme-anim * { transition: background-color .35s ease, col
   .room-head { margin: 0 -28px; padding-left: 24px; padding-right: 24px; }
   .b-col { max-width: min(70%, 520px); }
 }
+
+/* ---------- open chats & rooms (several at once) ---------- */
+.room-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 10px; border-radius: 22px; background: var(--surface, #fff); cursor: pointer; min-height: 66px; text-align: left; }
+.room-row .rr-name { display: block; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-row .rr-sub { display: block; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.room-row .rr-tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 99px; background: var(--blue-50, #EAF3FD); color: var(--muted-2, #3b4a5c); vertical-align: 2px; margin-left: 4px; }
+.room-row .rr-tag.on { background: var(--primary); color: var(--on-primary); }
+.room-row .rr-badge { min-width: 24px; height: 24px; padding: 0 7px; border-radius: 99px; background: #2F8CF0; color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; animation: pop .35s cubic-bezier(.3,1.6,.5,1); }
+.room-row .rr-x { width: 36px; height: 36px; border: none; background: transparent; color: var(--muted); }
+.room-row.is-ended { opacity: .72; }
+@keyframes pop { from { transform: scale(.4); } to { transform: scale(1); } }
+#nav a { position: relative; }
+.nbadge { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: #2F8CF0; color: #fff; font: 700 11px/18px Inter, system-ui, sans-serif; font-style: normal; text-align: center; box-shadow: 0 0 0 2px var(--bg, #fff); }
+#rooms-back { position: relative; }
+#rooms-back[data-unread]:not([data-unread=""])::after { content: attr(data-unread); position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: #2F8CF0; color: #fff; font: 700 11px/18px Inter, system-ui, sans-serif; text-align: center; }

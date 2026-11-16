@@ -82,7 +82,10 @@
   const S = {
     screen: 'home',
     cfg: { retentionDays: 30, maxFileMb: 2048, partSize: 20 * 1024 * 1024 },
-    session: store.sget('beam_session'),   // { code, token, memberId, type, role, joinUrl, expiresAt }
+    session: store.sget('beam_session'),   // the room on screen: { code, token, memberId, type, role, joinUrl, expiresAt }
+    sessions: store.sget('beam_sessions') || {}, // every room you're in, by code
+    cache: {},                             // code -> { room, unread } for rooms in the background
+    watch: {},                             // code -> background connection
     room: null,                            // public room state from the server
     ws: null, wsTimer: null, wsTries: 0,
     progress: {},                          // fileId -> uploaded bytes (live)
@@ -99,9 +102,10 @@
   };
 
   // ---------- API ----------
-  async function api(path, { method = 'GET', body, auth = true } = {}) {
+  async function api(path, { method = 'GET', body, auth = true, sess } = {}) {
     const headers = { 'content-type': 'application/json' };
-    if (auth && S.session) headers['x-beam-token'] = S.session.token;
+    const as = sess || S.session;
+    if (auth && as) headers['x-beam-token'] = as.token;
     const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
     let data = {};
     try { data = await res.json(); } catch { /* empty */ }
@@ -189,8 +193,9 @@
       ['receive', 'Receive', I.down(24)],
       ['team', 'Chat and rooms', I.team(24)]
     ];
+    const unread = unreadTotal();
     $('#nav').innerHTML = items.map(([id, label, icon]) =>
-      `<a href="#" data-act="nav-${id}" aria-label="${label}" class="lg press ${active === id ? 'dark' : ''}" ${active === id ? 'aria-current="page"' : ''}>${icon}</a>`).join('');
+      `<a href="#" data-act="nav-${id}" aria-label="${label}${id === 'team' && unread ? ` (${unread} new)` : ''}" class="lg press ${active === id ? 'dark' : ''}" ${active === id ? 'aria-current="page"' : ''}>${icon}${id === 'team' && unread ? `<i class="nbadge">${unread > 9 ? '9+' : unread}</i>` : ''}</a>`).join('');
   }
 
   // ---------- screens ----------
@@ -295,7 +300,8 @@
             <span class="grow"><strong class="display" style="font-size:18px;display:block">Team room</strong><span class="small muted">Lots of people</span></span>
           </a>
         </div>
-        ${S.session ? `<a href="#" class="card row press" data-act="resume" style="text-decoration:none;color:inherit"><span class="dot blue"></span><span class="grow"><b>Back to your ${S.session.type === 'team' ? 'team room' : S.session.type === 'chat' ? 'private chat' : 'transfer'}</b><br><span class="small muted">Code ${esc(S.session.code)}</span></span>${I.up(18)}</a>` : ''}
+        ${roomsHtml()}
+        ${S.session && S.session.type === 'single' ? `<a href="#" class="card row press" data-act="resume" style="text-decoration:none;color:inherit"><span class="dot blue"></span><span class="grow"><b>Back to your ${S.session.type === 'team' ? 'team room' : S.session.type === 'chat' ? 'private chat' : 'transfer'}</b><br><span class="small muted">Code ${esc(S.session.code)}</span></span>${I.up(18)}</a>` : ''}
         </div><aside class="home-side stack">
           <div class="row between"><b style="font-size:15px">Recent on this device</b>${store.get('beam_recent', []).length ? '<a href="#" class="small" data-act="clear-recent">Clear</a>' : ''}</div>
           ${recentList(8)}
@@ -347,6 +353,7 @@
           <h1 id="h-team">Chat & rooms</h1>
           <p class="muted">Start one and share the code. No accounts, no phone numbers. Codes work for 1 hour until someone joins.</p>
         </div>
+        ${roomsHtml()}
         <button class="team-tile lg tint press" data-act="chat-create" style="height:88px;border:none">
           <span class="mini-btn lg dark" style="width:48px;height:48px">${I.bubble}</span>
           <span class="grow"><strong class="display" style="font-size:20px;display:block">Start a private chat</strong><span class="small" style="color:var(--muted-2)">1-on-1: messages, files, voice notes and calls</span></span>
@@ -644,7 +651,7 @@
     const sub = ended ? 'Ended' : duo ? (other ? (other.online ? 'online' : 'away') : `waiting · code ${s.code}`) : `${online.length} here · code ${s.code}`;
     return `<section class="screen chat-screen" aria-labelledby="h-team2">
       <header class="room-head">
-        <a href="#" class="circle lg press" data-act="${isHost ? 'nav-home' : 'leave'}" aria-label="${isHost ? 'Back' : 'Leave'}">${isHost ? I.back : I.close}</a>
+        <a href="#" id="rooms-back" class="circle lg press" data-act="rooms" data-unread="${unreadTotal() || ''}" aria-label="All chats and rooms">${I.back}</a>
         ${duo && other ? `<span class="av" style="width:40px;height:40px;background:${tint(other.id)};color:#0E1116;border:none" aria-hidden="true">${esc(initial(other.name || other.device))}</span>` : ''}
         <button class="title" data-act="info" aria-label="${duo ? 'Chat info' : 'Room info and people'}">
           <b id="h-team2">${esc(title)}</b>
@@ -741,10 +748,30 @@
     return false;
   }
 
-  function sendMessage() {
+  // Wait a moment for the room's connection (e.g. just after switching rooms).
+  function wsReady(ms = 5000) {
+    return new Promise((resolve) => {
+      const t0 = Date.now();
+      const check = () => {
+        if (S.ws && S.ws.readyState === 1) resolve(true);
+        else if (Date.now() - t0 > ms) resolve(false);
+        else setTimeout(check, 100);
+      };
+      check();
+    });
+  }
+
+  async function sendMessage() {
     const ta = $('#msg');
     const text = (ta ? ta.value : '').trim();
     if (!text) return;
+    const code = S.session && S.session.code;
+    if (!(S.ws && S.ws.readyState === 1)) {
+      if (S.waitingToSend) return;
+      S.waitingToSend = true;
+      try { await wsReady(); } finally { S.waitingToSend = false; }
+    }
+    if (!S.session || S.session.code !== code) return;
     if (!wsSend({ t: 'chat', text, replyTo: S.replyTo || undefined })) { toast('Reconnecting… try again in a second.', true); return; }
     ta.value = ''; S.draft = ''; S.replyTo = null;
     ta.dispatchEvent(new Event('input'));
@@ -894,7 +921,7 @@
         const v = seg.length ? Math.max(...seg) : 0;
         wave.push(Math.min(9, Math.round(v * 9)));
       }
-      S.queue.push({ file, meta: { voice: true, duration, wave: wave.join('') } });
+      S.queue.push({ file, sess: S.session, meta: { voice: true, duration, wave: wave.join('') } });
       S.stick = true;
       runQueue();
     };
@@ -1353,7 +1380,7 @@
           btn.disabled = false; btn.textContent = 'Connect';
         }
       });
-      setTimeout(() => inputs[0] && inputs[0].focus(), 50);
+      setTimeout(() => { if (inputs[0] && !inputs.some((x) => x.value) && !inputs.includes(document.activeElement)) inputs[0].focus(); }, 50);
     },
     room() {
       startTick();
@@ -1379,13 +1406,249 @@
   }
 
   // ---------- rooms ----------
+  // You can be in several rooms at once (a private chat and team rooms).
+  // The one on screen gets the full live connection; the others stay connected
+  // quietly so new messages, files and calls still show up.
+  const isLive = (r) => !!r && (r.status === 'waiting' || r.status === 'active');
+  function saveSessions() {
+    store.sset('beam_sessions', S.sessions);
+    store.sset('beam_session', S.session);
+  }
   function setSession(sess) {
+    if (!sess) { if (S.session) forget(S.session.code); return; }
+    S.sessions[sess.code] = { ...sess, at: (S.sessions[sess.code] || {}).at || Date.now() };
     S.session = sess;
-    store.sset('beam_session', sess);
+    saveSessions();
+  }
+  function forget(code) {
+    stopWatch(code);
+    delete S.sessions[code];
+    delete S.cache[code];
+    if (S.session && S.session.code === code) S.session = null;
+    saveSessions();
+    refreshRooms();
+  }
+  function roomOf(code) {
+    if (S.session && S.session.code === code) return S.room;
+    return S.cache[code] ? S.cache[code].room : null;
+  }
+  function roomLabel(sess, r) {
+    if (sess.type === 'chat') {
+      const other = r && r.members.find((m) => m.id !== sess.memberId && !m.removed);
+      return other ? who(other) : 'Private chat';
+    }
+    if (sess.type === 'team') {
+      if (sess.role === 'host') return 'Your team room';
+      const host = r && r.members.find((m) => m.role === 'host');
+      return `${host && host.name ? host.name : 'Team'}'s room`;
+    }
+    return 'File transfer';
+  }
+  // Chats and team rooms you're in, most recent first.
+  function openRooms() {
+    return Object.values(S.sessions).filter((x) => x.type === 'team' || x.type === 'chat').sort((a, b) => (b.at || 0) - (a.at || 0));
+  }
+  function unreadTotal() {
+    return Object.keys(S.cache).reduce((n, c) => n + (S.sessions[c] ? (S.cache[c].unread || 0) : 0), 0);
+  }
+  function roomsHtml() {
+    const list = openRooms();
+    if (!list.length) return '';
+    return `<div class="rooms stack" style="gap:8px">
+      <div class="row between"><b style="font-size:15px">Your chats & rooms</b><span class="small muted">${list.length} open</span></div>
+      ${list.map((x) => {
+        const r = roomOf(x.code);
+        const c = S.cache[x.code] || {};
+        const unread = c.unread || 0;
+        const ended = r && !isLive(r);
+        const here = S.session && S.session.code === x.code;
+        const last = r && r.messages && r.messages.length ? r.messages[r.messages.length - 1] : null;
+        const lastWho = last && r.members.find((m) => m.id === last.from);
+        const people = r ? r.members.filter((m) => !m.removed) : [];
+        const sub = !r ? `Code ${esc(x.code)}`
+          : ended ? 'Ended · you can still save what was shared'
+          : r.call ? `${r.call.video ? 'Video' : 'Voice'} call going on`
+          : last ? `${last.from === x.memberId ? 'You' : esc(x.type === 'chat' ? '' : who(lastWho))}${x.type === 'chat' && last.from !== x.memberId ? '' : ': '}${esc(last.text.slice(0, 60))}`
+          : x.type === 'chat' ? (people.length < 2 ? `Waiting · code ${esc(x.code)}` : 'Say hi 👋')
+          : `${people.filter((m) => m.online).length} here · code ${esc(x.code)}`;
+        const label = roomLabel(x, r);
+        const av = x.type === 'chat'
+          ? `<span class="av" style="width:44px;height:44px;background:${tint(x.code)};color:#0E1116;border:none;font-size:17px">${esc(initial(label))}</span>`
+          : `<span class="mini-btn lg dark" style="width:44px;height:44px">${I.team(20)}</span>`;
+        return `<div class="room-row lg press ${ended ? 'is-ended' : ''}" data-act="open-room" data-code="${esc(x.code)}" role="button" tabindex="0" aria-label="Open ${esc(label)}${unread ? `, ${unread} new` : ''}">
+          ${av}
+          <span class="grow" style="min-width:0"><b class="rr-name">${esc(label)}${x.type === 'chat' ? '' : ' <span class="rr-tag">Team</span>'}${here ? ' <span class="rr-tag on">Open</span>' : ''}</b><span class="rr-sub">${sub}</span></span>
+          ${unread ? `<span class="rr-badge">${unread > 99 ? '99+' : unread}</span>` : ''}
+          ${ended ? `<button class="circle press rr-x" data-act="forget-room" data-code="${esc(x.code)}" aria-label="Remove ${esc(label)} from the list">${I.close}</button>` : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+  let roomsTimer = null;
+  function refreshRooms() {
+    clearTimeout(roomsTimer);
+    roomsTimer = setTimeout(() => {
+      renderNav();
+      if (S.screen === 'home' || S.screen === 'team') render();
+      else if (isChatRoom()) { const el = $('#rooms-back'); if (el) el.dataset.unread = unreadTotal() || ''; }
+    }, 60);
+  }
+
+  // Move the room on screen to the background.
+  function stashActive() {
+    const s = S.session;
+    if (!s) return;
+    if (C.joined) { leaveCall(true); toast('You left the call'); }
+    if (S.video) { S.video.el.pause(); S.video = null; }
+    if (S.rec) stopRecording(false);
+    if (S.playing) { S.playing.audio.pause(); S.playing = null; }
+    closeViewer();
+    if ($('#info').open) $('#info').close();
+    disconnect();
+    S.session = null;
+    if (s.type === 'single') {
+      // One-off transfers aren't kept as open rooms (uploads still finish).
+      delete S.sessions[s.code];
+    } else {
+      S.cache[s.code] = { room: S.room, unread: 0 };
+      if (isLive(S.room)) watch(s.code);
+    }
+    S.room = null;
+    saveSessions();
+  }
+
+  // Bring a room you're already in onto the screen.
+  async function switchTo(code) {
+    const target = S.sessions[code];
+    if (!target) return;
+    if (S.session && S.session.code === code) { go('room'); return; }
+    stashActive();
+    stopWatch(code);
+    const c = S.cache[code] || {};
+    delete S.cache[code];
+    S.session = target;
+    S.sessions[code] = { ...target, at: Date.now() };
+    saveSessions();
+    S.room = c.room || null;
+    S.seen = new Set(S.room ? S.room.files.map((f) => f.id) : []);
+    S.progress = {}; S.typing = {}; S.replyTo = null; S.draft = ''; S.stick = true; S.pendingFly = [];
+    go('room');
+    // Connect straight away; the snapshot below fills in anything missed.
+    if (!S.room || isLive(S.room)) connect();
+    try {
+      const snap = await api(`/api/rooms/${code}`, { sess: target });
+      if (!S.session || S.session.code !== code) return;
+      onState(snap.state);
+      if (!isLive(snap.state)) disconnect();
+      else if (!S.ws) connect();
+    } catch (e) {
+      if (e.status === 403 || e.status === 404) { forget(code); toast('That room is no longer available.', true); go('home'); }
+    }
+    refreshRooms();
+  }
+
+  // A quiet connection for a room that isn't on screen.
+  function stopWatch(code) {
+    const w = S.watch[code];
+    if (!w) return;
+    delete S.watch[code];
+    clearTimeout(w.timer);
+    if (w.ws) { const ws = w.ws; w.ws = null; try { ws.close(); } catch { /* ignore */ } }
+  }
+  function watch(code) {
+    const sess = S.sessions[code];
+    if (!sess || S.watch[code] || (S.session && S.session.code === code)) return;
+    const w = { ws: null, tries: 0, timer: null };
+    S.watch[code] = w;
+    const cacheOf = () => S.cache[code] || (S.cache[code] = { room: null, unread: 0 });
+    const open = () => {
+      if (S.watch[code] !== w) return;
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const ws = new WebSocket(`${proto}://${location.host}/api/rooms/${code}/ws?token=${encodeURIComponent(sess.token)}`);
+      w.ws = ws;
+      let ping;
+      ws.onopen = () => { w.tries = 0; ping = setInterval(() => ws.readyState === 1 && ws.send('ping'), 25000); };
+      ws.onmessage = (e) => {
+        if (e.data === 'pong' || S.watch[code] !== w) return;
+        let msg; try { msg = JSON.parse(e.data); } catch { return; }
+        const c = cacheOf();
+        const label = () => roomLabel(sess, c.room);
+        if (msg.t === 'state') {
+          const prev = c.room;
+          if (prev && !msg.state.messages) msg.state.messages = prev.messages;
+          if (prev) {
+            const fresh = msg.state.files.filter((f) => f.senderId !== sess.memberId && !prev.files.some((x) => x.id === f.id));
+            if (fresh.length) { c.unread += fresh.length; toast(`${label()}: ${fresh.length === 1 ? (fresh[0].voice ? 'voice note' : fresh[0].name) : `${fresh.length} new files`}`); }
+          }
+          c.room = msg.state;
+          refreshRooms();
+        } else if (msg.t === 'msg') {
+          if (c.room) { c.room.messages = c.room.messages || []; if (!c.room.messages.some((x) => x.id === msg.msg.id)) c.room.messages.push(msg.msg); }
+          if (msg.msg.from !== sess.memberId) {
+            c.unread++;
+            const m = c.room && c.room.members.find((x) => x.id === msg.msg.from);
+            toast(`${sess.type === 'chat' ? label() : `${who(m)} in ${label()}`}: ${msg.msg.text.slice(0, 60)}`);
+            if (navigator.vibrate) navigator.vibrate(10);
+          }
+          refreshRooms();
+        } else if (msg.t === 'call') {
+          const before = c.room && c.room.call;
+          if (c.room) c.room.call = msg.call;
+          if (!before && msg.call && msg.joined && msg.joined !== sess.memberId) toast(`${msg.call.video ? 'Video' : 'Voice'} call started in ${label()}`, true);
+          refreshRooms();
+        } else if (msg.t === 'ended') {
+          if (msg.state) c.room = msg.state; else if (c.room) c.room.status = 'ended';
+          stopWatch(code);
+          if (msg.reason !== 'expired') toast(`${label()} has ended`);
+          refreshRooms();
+        } else if (msg.t === 'removed') {
+          toast(`You were removed from ${label()}.`, true);
+          forget(code);
+        }
+      };
+      ws.onclose = (e) => {
+        clearInterval(ping);
+        if (S.watch[code] !== w || w.ws !== ws) return;
+        w.ws = null;
+        if (e.code === 4003) { forget(code); return; }
+        if (e.code === 1000 && /ended|removed|expired/.test(e.reason || '')) { stopWatch(code); refreshRooms(); return; }
+        if (w.tries > 8) return;
+        w.tries++;
+        w.timer = setTimeout(async () => {
+          try {
+            const snap = await api(`/api/rooms/${code}`, { sess });
+            cacheOf().room = snap.state;
+            if (isLive(snap.state)) open(); else stopWatch(code);
+            refreshRooms();
+          } catch (err) {
+            if (err.status === 403 || err.status === 404) forget(code); else open();
+          }
+        }, Math.min(15000, 800 * 2 ** w.tries));
+      };
+    };
+    open();
+  }
+
+  // After a reload: check the rooms in the background are still there.
+  async function restoreRooms() {
+    // Older versions only kept one room.
+    if (S.session && !S.sessions[S.session.code]) S.sessions[S.session.code] = { ...S.session, at: Date.now() };
+    for (const sess of Object.values(S.sessions)) {
+      if (S.session && sess.code === S.session.code) continue;
+      if (sess.type !== 'team' && sess.type !== 'chat') { delete S.sessions[sess.code]; continue; }
+      api(`/api/rooms/${sess.code}`, { sess }).then((snap) => {
+        S.cache[sess.code] = { room: snap.state, unread: 0 };
+        if (isLive(snap.state)) watch(sess.code);
+        refreshRooms();
+      }).catch((e) => { if (e.status === 403 || e.status === 404) forget(sess.code); });
+    }
+    saveSessions();
   }
 
   async function createRoom(type) {
     const res = await api('/api/rooms', { method: 'POST', auth: false, body: { type, name: myName(), device: DEVICE } });
+    stashActive();
+    S.progress = {}; S.typing = {}; S.replyTo = null; S.draft = ''; S.stick = true;
     setSession({ code: res.code, token: res.token, memberId: res.memberId, type: res.type, role: 'host', joinUrl: res.joinUrl, expiresAt: res.expiresAt });
     S.room = res.state;
     S.seen = new Set(res.state.files.map((f) => f.id));
@@ -1394,7 +1657,11 @@
   }
 
   async function joinRoom(code, secret) {
+    code = String(code).toUpperCase();
+    if (S.sessions[code]) { await switchTo(code); return; }
     const res = await api(`/api/rooms/${code}/join`, { method: 'POST', auth: false, body: { secret, name: myName(), device: DEVICE } });
+    stashActive();
+    S.progress = {}; S.typing = {}; S.replyTo = null; S.draft = ''; S.stick = true;
     setSession({ code: res.code, token: res.token, memberId: res.memberId, type: res.type, role: 'member' });
     S.room = res.state;
     S.seen = new Set();
@@ -1597,9 +1864,11 @@
       try { await api(`/api/rooms/${s.code}/end`, { method: 'POST' }); } catch { /* already gone */ }
     }
     disconnect();
+    const code = s ? s.code : null;
     setSession(null);
-    S.room = null; S.local = {}; S.progress = {}; S.queue = [];
-    go('home');
+    S.room = null; S.progress = {};
+    S.queue = S.queue.filter((q) => !q.sess || q.sess.code !== code);
+    go(openRooms().length ? 'team' : 'home');
   }
 
   // ---------- uploads ----------
@@ -1650,11 +1919,11 @@
     return {};
   }
 
-  function putPart(url, blob, uploadedAfter, onProgress) {
+  function putPart(url, blob, uploadedAfter, onProgress, token) {
     return new Promise((resolve, reject) => {
       const x = new XMLHttpRequest();
       x.open('PUT', url);
-      x.setRequestHeader('x-beam-token', S.session.token);
+      x.setRequestHeader('x-beam-token', token);
       x.setRequestHeader('x-beam-uploaded', String(uploadedAfter));
       x.upload.onprogress = (e) => onProgress(e.loaded);
       x.onload = () => {
@@ -1668,11 +1937,11 @@
     });
   }
 
-  async function uploadOne(file, meta = {}) {
-    const s = S.session;
+  async function uploadOne(file, meta = {}, sess) {
+    const s = sess || S.session;
     const prev = meta.voice ? {} : await makePreview(file);
     const thumb = prev.thumb || null;
-    const created = await api(`/api/rooms/${s.code}/files`, { method: 'POST', body: { name: file.name, size: file.size, type: file.type, thumb, voice: !!meta.voice, duration: meta.voice ? meta.duration : prev.duration, wave: meta.wave, ratio: prev.ratio } });
+    const created = await api(`/api/rooms/${s.code}/files`, { method: 'POST', sess: s, body: { name: file.name, size: file.size, type: file.type, thumb, voice: !!meta.voice, duration: meta.voice ? meta.duration : prev.duration, wave: meta.wave, ratio: prev.ratio } });
     const fileId = created.fileId;
     const partSize = created.partSize || S.cfg.partSize;
     S.local[fileId] = { loaded: 0 };
@@ -1704,7 +1973,7 @@
             await whenVisibleAndOnline();
             try {
               live[piece.n] = 0;
-              const p = await putPart(`/api/rooms/${s.code}/files/${fileId}/parts/${piece.n}`, blob, doneBytes + piece.size, (loaded) => { live[piece.n] = loaded; paint(); });
+              const p = await putPart(`/api/rooms/${s.code}/files/${fileId}/parts/${piece.n}`, blob, doneBytes + piece.size, (loaded) => { live[piece.n] = loaded; paint(); }, s.token);
               delete live[piece.n];
               doneBytes += piece.size;
               parts.push({ partNumber: p.partNumber, etag: p.etag });
@@ -1725,11 +1994,12 @@
       };
       await Promise.all(Array.from({ length: Math.min(PARALLEL, pieces.length) }, worker));
       parts.sort((a, b) => a.partNumber - b.partNumber);
-      await api(`/api/rooms/${s.code}/files/${fileId}/complete`, { method: 'POST', body: { parts } });
-      const peer = S.room && S.room.type === 'team' ? 'team room' : S.room && S.room.type === 'chat' ? (((S.room.members.find((m) => m.id !== s.memberId)) || {}).name || 'private chat') : ((S.room && S.room.members.find((m) => m.id !== s.memberId)) || {}).device || `code ${s.code}`;
+      await api(`/api/rooms/${s.code}/files/${fileId}/complete`, { method: 'POST', sess: s, body: { parts } });
+      const rr = roomOf(s.code) || (S.session && S.session.code === s.code ? S.room : null);
+      const peer = rr && rr.type === 'team' ? 'team room' : rr && rr.type === 'chat' ? (((rr.members.find((m) => m.id !== s.memberId)) || {}).name || 'private chat') : ((rr && rr.members.find((m) => m.id !== s.memberId)) || {}).device || `code ${s.code}`;
       addRecent({ name: file.name, type: file.type, size: file.size, thumb, dir: 'sent', peer });
     } catch (e) {
-      try { await api(`/api/rooms/${s.code}/files/${fileId}/abort`, { method: 'POST' }); } catch { /* ignore */ }
+      try { await api(`/api/rooms/${s.code}/files/${fileId}/abort`, { method: 'POST', sess: s }); } catch { /* ignore */ }
       throw e;
     } finally {
       delete S.local[fileId];
@@ -1790,10 +2060,10 @@
         const item = S.queue.shift();
         const file = item.file || item;
         try {
-          await uploadOne(file, item.meta || {});
+          await uploadOne(file, item.meta || {}, item.sess);
         } catch (e) {
           toast(`${file.name}: ${e.message}`, true);
-          if (e.status === 410 || e.status === 403) { S.queue = []; break; }
+          if (e.status === 410 || e.status === 403) { S.queue = S.queue.filter((q) => (q.sess && q.sess.code) !== (item.sess && item.sess.code)); }
         }
       }
     } finally {
@@ -1826,7 +2096,7 @@
         await createRoom(type);
       } catch (e) { toast(e.message, true); return; }
     }
-    S.queue.push(...files.map((file) => ({ file, meta: {} })));
+    S.queue.push(...files.map((file) => ({ file, sess: S.session, meta: {} })));
     if (S.screen !== 'room') go('room'); else { S.stick = true; render(); }
     runQueue();
   }
@@ -1924,7 +2194,11 @@
   const ACTIONS = {
     'nav-home': () => go('home'),
     'nav-receive': () => (S.session && S.session.role === 'member' && S.room && (S.room.status === 'active' || S.room.status === 'waiting')) ? go('room') : go('receive'),
-    'nav-team': () => (S.session && (S.session.type === 'team' || S.session.type === 'chat') && S.room && S.room.status !== 'ended' && S.room.status !== 'expired' && S.room.status !== 'removed') ? go('room') : go('team'),
+    'nav-team': () => {
+      const open = openRooms();
+      if (open.length === 1 && S.session && S.session.code === open[0].code && isLive(S.room)) go('room');
+      else go('team');
+    },
     'nav-send': async () => {
       if (S.session && S.session.role === 'host' && S.session.type === 'single' && S.room && (S.room.status === 'waiting' || S.room.status === 'active')) { go('room'); return; }
       const files = await pickFiles();
@@ -1932,6 +2206,9 @@
     },
     'add-files': async () => sendFiles(await pickFiles(), S.session ? S.session.type : 'single'),
     resume: () => go('room'),
+    rooms: () => go('team'),
+    'open-room': (el) => switchTo(el.dataset.code),
+    'forget-room': (el) => { const c = el.dataset.code; if (S.session && S.session.code === c) { disconnect(); S.room = null; } forget(c); render(); },
     'chat-create': () => askName('Start a private chat', async () => {
       try {
         await createRoom('chat');
@@ -2160,6 +2437,7 @@
   // ---------- start ----------
   async function boot() {
     api('/api/config', { auth: false }).then((c) => { S.cfg = { ...S.cfg, ...c }; }).catch(() => {});
+    restoreRooms();
     const hash = /#j=([A-Za-z0-9]{4,5})-([a-z0-9]+)/.exec(location.hash);
     if (hash) history.replaceState(null, '', location.pathname);
     if (hash) {
@@ -2195,8 +2473,7 @@
     const m = /#j=([A-Za-z0-9]{4,5})-([a-z0-9]+)/.exec(location.hash);
     if (!m) return;
     history.replaceState(null, '', location.pathname);
-    if (S.session && S.session.code === m[1]) { go('room'); return; }
-    disconnect();
+    if (S.session && S.session.code === m[1].toUpperCase()) { go('room'); return; }
     try { await joinRoom(m[1], m[2]); } catch (e) { toast(e.message, true); }
   });
 
