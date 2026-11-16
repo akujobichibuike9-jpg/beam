@@ -210,7 +210,8 @@ async function handleApi(request, env, ctx, url) {
       thumb: b.thumb,
       voice: !!b.voice,
       duration: Number(b.duration) || 0,
-      wave: typeof b.wave === 'string' ? b.wave : ''
+      wave: typeof b.wave === 'string' ? b.wave : '',
+      ratio: Number(b.ratio) || 0
     }));
   }
 

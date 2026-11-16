@@ -87,7 +87,9 @@
     queue: [], uploading: false,
     seen: new Set(),                       // file ids already animated in
     saved: new Set(store.get('beam_saved', [])),
-    fresh: new Set(),                      // feed items to animate on the next render
+    fresh: new Set(),
+    localUrls: {},                         // fileId -> object URL of my own videos
+    video: null,                           // { id, el } the video playing in the chat                      // feed items to animate on the next render
     typing: {},
     replyTo: null, draft: '', rec: null, playing: null, stick: true, unread: 0,
     tick: null
@@ -198,7 +200,12 @@
     const chat = isChatRoom();
     const stick = chat && (S.stick || nearBottom());
     const y = window.scrollY;
+    const playing = S.video && S.video.el;
     app.innerHTML = fn();
+    if (playing) {
+      const box = $(`[data-vid="${S.video.id}"] .vbox`);
+      if (box) { box.innerHTML = ''; box.appendChild(playing); box.classList.add('on'); } else { playing.pause(); S.video = null; }
+    }
     document.body.classList.toggle('in-chat', chat);
     const wall = $('#wall');
     wall.hidden = !chat;
@@ -524,10 +531,30 @@
     const up = f.status === 'uploading' ? (S.local[f.id] ? S.local[f.id].loaded : (S.progress[f.id] ?? f.uploaded)) : f.size;
     const pct = f.size ? Math.round((up / f.size) * 100) : 100;
     const k = kindOf(f.type, f.name);
-    const shot = f.thumb ? `<div class="shot"><img src="${esc(f.thumb)}" alt=""></div>` : '';
     const saved = S.saved.has(f.id);
     const others = S.room.members.filter((m) => m.id !== f.senderId && !m.removed).length;
     const got = (f.downloadedBy || []).length;
+    const ratio = f.ratio ? Math.max(0.56, Math.min(1.78, f.ratio)) : (k === 'vid' ? 16 / 9 : 4 / 3);
+    if (k === 'vid') {
+      const playable = f.status === 'ready' || (mine && S.localUrls[f.id]);
+      return `<div class="fcard vcard" data-vid="${f.id}">
+        <div class="vbox" style="aspect-ratio:${ratio}">
+          ${f.thumb ? `<img src="${esc(f.thumb)}" alt="" class="vposter">` : ''}
+          <button class="vplay" data-act="video-play" data-id="${f.id}" ${playable ? '' : 'disabled'} aria-label="${playable ? 'Play video' : 'Video still arriving'}">
+            ${playable ? '<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>' : `<span class="ring" style="--p:${pct}"><b data-ring="${f.id}">${pct}%</b></span>`}
+          </button>
+          ${f.duration ? `<span class="vdur">${fmtDur(f.duration)}</span>` : ''}
+        </div>
+        <div class="row">
+          <div class="grow stack" style="gap:3px">
+            <div class="name">${esc(f.name)}</div>
+            <div class="meta" data-meta="${f.id}">${fmtSize(f.size)}${f.status === 'uploading' ? ` · ${mine ? 'Uploading' : 'Arriving'} ${pct}%` : (mine ? ` · Saved by ${got} of ${others}` : '')}</div>
+          </div>
+          ${!mine && f.status === 'ready' ? `<button class="btn sm lg press" data-act="save" data-id="${f.id}">${saved ? 'Saved' : 'Save'}</button>` : ''}
+        </div>
+      </div>`;
+    }
+    const shot = f.thumb ? `<button class="shot" data-act="view-photo" data-id="${f.id}" style="aspect-ratio:${ratio}" aria-label="Open photo ${esc(f.name)}"><img src="${esc(f.thumb)}" alt=""></button>` : '';
     return `<div class="fcard">${shot}
       <div class="row">
         ${shot ? '' : `<span class="thumb ${k === 'vid' ? 'vid' : k === 'doc' ? 'doc' : ''}">${k === 'vid' ? I.play : esc(ext(f.name))}</span>`}
@@ -860,6 +887,7 @@
       S.playing.audio.pause(); S.playing = null; repaintVoice(id, 0); return;
     }
     if (S.playing) { S.playing.audio.pause(); const old = S.playing.id; S.playing = null; repaintVoice(old, 0); }
+    if (S.video) S.video.el.pause();
     const audio = new Audio(`/api/rooms/${S.session.code}/files/${id}?token=${encodeURIComponent(S.session.token)}&inline=1`);
     S.playing = { id, audio };
     audio.addEventListener('timeupdate', () => { const d = audio.duration && Number.isFinite(audio.duration) ? audio.duration : f.duration; repaintVoice(id, d ? audio.currentTime / d : 0, audio.currentTime); });
@@ -885,6 +913,78 @@
     const dur = $('.dur', el);
     if (dur && f) dur.textContent = playing && cur !== undefined ? fmtDur(cur) : fmtDur(f.duration);
   }
+
+  // ----- videos play right in the chat; photos open full screen -----
+  function fileUrl(id, inline = true) {
+    return `/api/rooms/${S.session.code}/files/${id}?token=${encodeURIComponent(S.session.token)}${inline ? '&inline=1' : ''}`;
+  }
+
+  function stopVideo() {
+    if (!S.video) return;
+    const { id, el } = S.video;
+    el.pause();
+    S.video = null;
+    const box = $(`[data-vid="${id}"] .vbox`);
+    if (box && isChatRoom()) render();
+  }
+
+  function playVideo(id) {
+    const f = S.room.files.find((x) => x.id === id);
+    if (!f) return;
+    const local = f.senderId === meId() ? S.localUrls[id] : null;
+    if (f.status !== 'ready' && !local) return;
+    if (S.video && S.video.id === id) return;
+    stopVideo();
+    if (S.playing) { S.playing.audio.pause(); const old = S.playing.id; S.playing = null; repaintVoice(old, 0); }
+    const box = $(`[data-vid="${id}"] .vbox`);
+    if (!box) return;
+    const v = document.createElement('video');
+    v.controls = true; v.playsInline = true; v.autoplay = true; v.preload = 'auto';
+    v.setAttribute('playsinline', '');
+    if (f.thumb) v.poster = f.thumb;
+    v.src = local || fileUrl(id);
+    v.addEventListener('error', () => {
+      toast('This video can\'t play in this browser. Tap Save to watch it on your device.', true);
+      S.video = null;
+      render();
+    });
+    v.addEventListener('ended', () => { if (S.video && S.video.el === v) { S.video = null; } });
+    box.innerHTML = '';
+    box.appendChild(v);
+    box.classList.add('on');
+    S.video = { id, el: v };
+    v.play().catch(() => { /* the controls are there to start it */ });
+    if (navigator.vibrate) navigator.vibrate(8);
+  }
+
+  function viewPhoto(id) {
+    const f = S.room.files.find((x) => x.id === id);
+    if (!f) return;
+    closeViewer();
+    const d = document.createElement('div');
+    d.className = 'viewer';
+    d.setAttribute('role', 'dialog');
+    d.setAttribute('aria-label', f.name);
+    const sender = memberById(f.senderId);
+    d.innerHTML = `<div class="viewer-top">
+        <div class="grow"><b>${esc(f.name)}</b><span>${esc(sender ? (sender.id === meId() ? 'You' : (sender.name || sender.device)) : '')} · ${fmtSize(f.size)}</span></div>
+        ${f.senderId !== meId() && f.status === 'ready' ? `<button class="btn sm lg press" data-act="save" data-id="${f.id}">${S.saved.has(f.id) ? 'Saved' : 'Save'}</button>` : ''}
+        <button class="circle lg press" data-act="viewer-close" aria-label="Close">${I.close}</button>
+      </div>
+      <div class="viewer-img" data-act="viewer-close">
+        ${f.thumb ? `<img class="blur" src="${esc(f.thumb)}" alt="">` : ''}
+        ${f.status === 'ready' ? `<img class="full" src="${esc(fileUrl(id))}" alt="${esc(f.name)}">` : ''}
+      </div>`;
+    document.body.appendChild(d);
+    const full = $('.full', d);
+    if (full) full.addEventListener('load', () => full.classList.add('loaded'));
+    S.viewer = d;
+    $('.circle', d).focus();
+  }
+  function closeViewer() {
+    if (S.viewer) { S.viewer.remove(); S.viewer = null; }
+  }
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeViewer(); });
 
   // ----- room info sheet -----
   function renderInfo() {
@@ -1407,6 +1507,8 @@
     const pct = f.size ? Math.min(100, Math.round((loaded / f.size) * 100)) : 100;
     const bar = $(`[data-bar="${f.id}"]`);
     if (bar) bar.style.width = `${pct}%`;
+    const ring = $(`[data-ring="${f.id}"]`);
+    if (ring) { ring.textContent = `${pct}%`; ring.parentElement.style.setProperty('--p', pct); }
     const meta = $(`[data-meta="${f.id}"]`);
     if (meta) meta.textContent = meta.textContent.replace(/(Uploading|Arriving) \d+%/, `$1 ${pct}%`);
     if (S.room && S.session && S.session.role === 'host' && S.room.type === 'single') {
@@ -1435,6 +1537,8 @@
 
   async function leave() {
     leaveCall();
+    if (S.video) { S.video.el.pause(); S.video = null; }
+    closeViewer();
     if (S.rec) stopRecording(false);
     if (S.playing) { S.playing.audio.pause(); S.playing = null; }
     $('#info').open && $('#info').close();
@@ -1449,22 +1553,51 @@
   }
 
   // ---------- uploads ----------
-  async function makeThumb(file) {
-    if (!/^image\/(jpeg|png|gif|webp|bmp|avif|heic|heif)/.test(file.type)) return null;
-    try {
-      const bmp = await createImageBitmap(file);
-      const scale = 160 / Math.max(bmp.width, bmp.height);
-      const c = document.createElement('canvas');
-      c.width = Math.max(1, Math.round(bmp.width * Math.min(1, scale)));
-      c.height = Math.max(1, Math.round(bmp.height * Math.min(1, scale)));
-      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-      if (bmp.close) bmp.close();
-      for (let q = 0.75; q > 0.25; q -= 0.15) {
-        const url = c.toDataURL('image/jpeg', q);
-        if (url.length <= 38000) return url;
-      }
-    } catch { /* format not supported by this browser */ }
+  function toDataUrl(canvas) {
+    for (let q = 0.72; q > 0.2; q -= 0.12) {
+      const url = canvas.toDataURL('image/jpeg', q);
+      if (url.length <= 38000) return url;
+    }
     return null;
+  }
+  function drawScaled(src, w, h, max = 320) {
+    const scale = Math.min(1, max / Math.max(w, h));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w * scale));
+    c.height = Math.max(1, Math.round(h * scale));
+    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+    return c;
+  }
+  // A small preview picture (and, for videos, the length and shape) to show before the file arrives.
+  async function makePreview(file) {
+    if (/^image\/(jpeg|png|gif|webp|bmp|avif|heic|heif)/.test(file.type)) {
+      try {
+        const bmp = await createImageBitmap(file);
+        const out = { thumb: toDataUrl(drawScaled(bmp, bmp.width, bmp.height)), ratio: bmp.width / bmp.height };
+        if (bmp.close) bmp.close();
+        return out;
+      } catch { return {}; }
+    }
+    if (/^video\//.test(file.type) || /\.(mov|mp4|m4v|webm)$/i.test(file.name)) {
+      return new Promise((resolve) => {
+        const v = document.createElement('video');
+        const url = URL.createObjectURL(file);
+        let done = false;
+        const finish = (val) => { if (done) return; done = true; URL.revokeObjectURL(url); v.removeAttribute('src'); v.load(); resolve(val); };
+        const timer = setTimeout(() => finish({ duration: Number.isFinite(v.duration) ? v.duration : 0 }), 5000);
+        v.muted = true; v.playsInline = true; v.preload = 'auto';
+        v.onloadedmetadata = () => { v.currentTime = Math.min(1, (v.duration || 2) / 4); };
+        v.onseeked = () => {
+          clearTimeout(timer);
+          try {
+            finish({ thumb: toDataUrl(drawScaled(v, v.videoWidth, v.videoHeight)), duration: v.duration || 0, ratio: v.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : 0 });
+          } catch { finish({ duration: v.duration || 0 }); }
+        };
+        v.onerror = () => { clearTimeout(timer); finish({}); };
+        v.src = url;
+      });
+    }
+    return {};
   }
 
   function putPart(url, blob, uploadedAfter, onProgress) {
@@ -1487,11 +1620,14 @@
 
   async function uploadOne(file, meta = {}) {
     const s = S.session;
-    const thumb = meta.voice ? null : await makeThumb(file);
-    const created = await api(`/api/rooms/${s.code}/files`, { method: 'POST', body: { name: file.name, size: file.size, type: file.type, thumb, voice: !!meta.voice, duration: meta.duration, wave: meta.wave } });
+    const prev = meta.voice ? {} : await makePreview(file);
+    const thumb = prev.thumb || null;
+    const created = await api(`/api/rooms/${s.code}/files`, { method: 'POST', body: { name: file.name, size: file.size, type: file.type, thumb, voice: !!meta.voice, duration: meta.voice ? meta.duration : prev.duration, wave: meta.wave, ratio: prev.ratio } });
     const fileId = created.fileId;
     const partSize = created.partSize || S.cfg.partSize;
     S.local[fileId] = { loaded: 0 };
+    // The sender can watch their own video straight away, while it uploads.
+    if (kindOf(file.type, file.name) === 'vid') S.localUrls[fileId] = URL.createObjectURL(file);
     S.seen.add(fileId);
     if (!meta.voice && !isChatRoom()) flyOut({ name: file.name, type: file.type, thumb });
     const parts = [];
@@ -1859,6 +1995,9 @@
       const d = $('#info .dice'); if (d) { d.classList.remove('spin'); void d.offsetWidth; d.classList.add('spin'); }
       if (navigator.vibrate) navigator.vibrate(8);
     },
+    'video-play': (el) => playVideo(el.dataset.id),
+    'view-photo': (el) => viewPhoto(el.dataset.id),
+    'viewer-close': () => closeViewer(),
     'call-start': (el) => startCall(el.dataset.video === '1'),
     'call-leave': () => leaveCall(),
     'call-min': () => { C.min = true; renderCall(); },

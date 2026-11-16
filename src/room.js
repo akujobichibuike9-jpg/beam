@@ -59,7 +59,7 @@ export class Room extends DurableObject {
           id: f.id, name: f.name, size: f.size, type: f.type, status: f.status,
           uploaded: f.uploaded, senderId: f.senderId, thumb: f.thumb || null,
           createdAt: f.createdAt, downloadedBy: f.downloadedBy || [],
-          voice: !!f.voice, duration: f.duration || 0, wave: f.wave || ''
+          voice: !!f.voice, duration: f.duration || 0, wave: f.wave || '', ratio: f.ratio || 0
         })),
       messages: (s.messages || []).slice(-200),
       reactions: s.reactions || {},
@@ -272,7 +272,7 @@ export class Room extends DurableObject {
   }
 
   // ---------- files ----------
-  async fileCreate({ token, name, size, type, thumb, voice, duration, wave }) {
+  async fileCreate({ token, name, size, type, thumb, voice, duration, wave, ratio }) {
     await this.load();
     if (!this.live()) return { error: 'room_closed' };
     const me = this.member(token);
@@ -292,7 +292,8 @@ export class Room extends DurableObject {
       senderId: me.id, uploadId: upload.uploadId, createdAt: now, downloadedBy: [],
       thumb: typeof thumb === 'string' && thumb.startsWith('data:image/') && thumb.length <= MAX_THUMB ? thumb : null,
       voice: !!voice,
-      duration: voice ? Math.max(0, Math.min(600, Number(duration) || 0)) : 0,
+      duration: voice || /^video\//.test(type || '') ? Math.max(0, Math.min(86400, Number(duration) || 0)) : 0,
+      ratio: Number(ratio) > 0.2 && Number(ratio) < 5 ? Math.round(Number(ratio) * 1000) / 1000 : 0,
       wave: voice && typeof wave === 'string' ? wave.replace(/[^0-9]/g, '').slice(0, 64) : ''
     };
     this.s.files[id] = f;
