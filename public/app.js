@@ -72,6 +72,8 @@
     phone: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>`,
     video: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 10l5-3v10l-5-3"/></svg>`,
     mic: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>`,
+    moon: `<svg class="moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>`,
+    sun: `<svg class="sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>`,
     pen: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>`
   };
 
@@ -252,7 +254,7 @@
   const SCREENS = {
     home() {
       return `<section class="screen" aria-labelledby="h-home">
-        ${header(`<button class="circle lg press" data-act="edit-name" aria-label="Your name: ${esc(myName() || 'not set')}">${I.pen}</button>`)}
+        ${header(`<div class="row" style="gap:10px"><button class="circle lg press theme-toggle" data-act="theme" aria-label="Switch light or dark theme">${I.moon}${I.sun}</button><button class="circle lg press" data-act="edit-name" aria-label="Your name: ${esc(myName() || 'not set')}">${I.pen}</button></div>`)}
         <div class="stack" style="gap:8px">
           <h1 id="h-home">What are we beaming today?</h1>
           <p class="muted">Open beam on both devices to start.</p>
@@ -277,11 +279,11 @@
               <span style="left:56px;top:34px;animation:hop 2.4s ease-in-out infinite">${photoArt(76, 56)}</span>
               <span style="left:34px;right:10px;bottom:6px;height:10px;border-radius:50%;background:rgba(40,90,150,.3);filter:blur(4px);animation:squash 2.4s ease-in-out infinite"></span>
             </div>
-            <div class="tile-label"><div><strong>Send</strong><span style="color:#33404F">Pick files</span></div><span class="mini-btn lg dark">${I.up(18)}</span></div>
+            <div class="tile-label"><div><strong>Send</strong><span style="color:var(--muted-2)">Pick files</span></div><span class="mini-btn lg dark">${I.up(18)}</span></div>
           </a>
         </div>
         <a href="#" class="team-tile lg press" data-act="nav-team">
-          <span class="avatars" aria-hidden="true"><span class="av" style="background:#0E1116;color:#fff">A</span><span class="av">T</span><span class="av" style="background:#9CCBF5">S</span></span>
+          <span class="avatars" aria-hidden="true"><span class="av" style="background:var(--primary);color:var(--on-primary)">A</span><span class="av">T</span><span class="av" style="background:#9CCBF5">S</span></span>
           <span class="grow"><strong class="display" style="font-size:18px;display:block">Team room</strong><span class="small muted">Share with lots of people at once</span></span>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
         </a>
@@ -339,7 +341,7 @@
         </div>
         <button class="team-tile lg tint press" data-act="team-create" style="height:88px;border:none">
           <span class="mini-btn lg dark" style="width:48px;height:48px">${I.team(22)}</span>
-          <span class="grow"><strong class="display" style="font-size:20px;display:block">Start a team room</strong><span class="small" style="color:#33404F">You'll get a code to share</span></span>
+          <span class="grow"><strong class="display" style="font-size:20px;display:block">Start a team room</strong><span class="small" style="color:var(--muted-2)">You'll get a code to share</span></span>
         </button>
         <a href="#" class="team-tile lg press" data-act="nav-receive" style="height:88px">
           <span class="mini-btn lg" style="width:48px;height:48px">${I.down(22)}</span>
@@ -593,7 +595,7 @@
       else if (it.k === 'voice') inner = `<div class="bubble media" data-dbl="${it.id}">${voiceHtml(it.f)}</div>`;
       else inner = `<div class="bubble media" data-dbl="${it.id}" data-file="${it.id}">${fileCardHtml(it.f, mine)}</div>`;
       out += `<div class="b-row ${mine ? 'me' : ''} ${first ? 'first' : ''} ${last ? 'last' : ''} ${pop}" data-key="${it.id}">
-        ${mine ? '' : `<span class="av" style="background:${tint(it.from)}" aria-hidden="true">${esc(initial(name))}</span>`}
+        ${mine ? '' : `<span class="av" style="background:${tint(it.from)};color:#0E1116" aria-hidden="true">${esc(initial(name))}</span>`}
         <div class="b-col">
           ${!mine && first ? `<span class="b-name">${esc(name)}</span>` : ''}
           ${inner}
@@ -628,13 +630,13 @@
           <b id="h-team2">${isHost ? 'Your room' : `${esc(host.name || 'Team')}'s room`}</b>
           <span>${ended ? 'Ended' : `${online.length} here · code ${esc(s.code)}`}</span>
         </button>
-        <button class="head-avs" data-act="info" aria-label="People" style="background:none;border:none;padding:0;cursor:pointer">${people.slice(0, 3).map((m) => `<span class="av" style="background:${m.id === s.memberId ? '#0E1116' : tint(m.id)};color:${m.id === s.memberId ? '#fff' : '#0E1116'}">${esc(initial(m.name || m.device))}</span>`).join('')}</button>
+        <button class="head-avs" data-act="info" aria-label="People" style="background:none;border:none;padding:0;cursor:pointer">${people.slice(0, 3).map((m) => `<span class="av" style="background:${m.id === s.memberId ? 'var(--primary)' : tint(m.id)};color:${m.id === s.memberId ? 'var(--on-primary)' : '#0E1116'}">${esc(initial(m.name || m.device))}</span>`).join('')}</button>
         ${ended ? '' : `<button class="circle lg press" data-act="call-start" data-video="0" aria-label="Voice call">${I.phone}</button>
         <button class="circle lg press" data-act="call-start" data-video="1" aria-label="Video call">${I.video}</button>`}
       </header>
       ${call && !inCall && !ended ? `<div class="call-banner lg tint">
         <span class="wave-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-        <div class="grow"><b>${call.video ? 'Video' : 'Voice'} call</b><div class="small" style="color:#33404F">${callers.map((m) => esc(m.name || m.device)).slice(0, 3).join(', ')}${callers.length > 3 ? ` +${callers.length - 3}` : ''}</div></div>
+        <div class="grow"><b>${call.video ? 'Video' : 'Voice'} call</b><div class="small" style="color:var(--muted-2)">${callers.map((m) => esc(m.name || m.device)).slice(0, 3).join(', ')}${callers.length > 3 ? ` +${callers.length - 3}` : ''}</div></div>
         <button class="btn sm lg dark press" data-act="call-start" data-video="${call.video ? 1 : 0}">Join</button>
       </div>` : ''}
       ${isHost && people.length === 1 && !ended ? `<div class="card row enter" style="margin-top:14px;gap:14px">
@@ -998,12 +1000,12 @@
     d.innerHTML = `<div class="stack" style="gap:16px">
       <div class="row between"><h2>Room info</h2><button class="circle lg press" data-act="info-close" aria-label="Close">${I.close}</button></div>
       ${isHost && !ended ? `<div class="row" style="gap:14px">
-          <div style="width:104px;height:104px;flex-shrink:0">${qrSvg(s.joinUrl || location.origin, 'QR code to join the room')}</div>
+          <div class="qr-box" style="width:112px;height:112px;flex-shrink:0;border-radius:14px;padding:4px">${qrSvg(s.joinUrl || location.origin, 'QR code to join the room')}</div>
           <div class="stack grow" style="gap:8px"><span class="display" style="font-size:34px;font-weight:700;letter-spacing:.12em">${esc(s.code)}</span>
           <button class="btn sm lg dark press" data-act="share" style="align-self:flex-start">${I.share} Share invite</button></div>
         </div>
         <div class="stack" style="gap:8px">
-          <b class="small" style="color:#33404F">Who can share files and voice notes?</b>
+          <b class="small" style="color:var(--muted-2)">Who can share files and voice notes?</b>
           <div class="seg lg" role="group" aria-label="Who can share files">
             <button class="${r.mode === 'all' ? 'lg dark' : ''} press" aria-pressed="${r.mode === 'all'}" data-act="mode" data-mode="all">Everyone</button>
             <button class="${r.mode === 'host' ? 'lg dark' : ''} press" aria-pressed="${r.mode === 'host'}" data-act="mode" data-mode="host">Only me</button>
@@ -1011,15 +1013,15 @@
           <span class="tiny muted">Everyone can always chat and join calls.</span>
         </div>` : `<p class="small muted">Code ${esc(s.code)} · ${me.canSend ? 'You can share files and voice notes.' : 'You can chat and join calls. Only the host shares files here.'}</p>`}
       ${window.beamWalls ? `<div class="stack" style="gap:8px">
-        <div class="row between"><b class="small" style="color:#33404F">Background</b>
+        <div class="row between"><b class="small" style="color:var(--muted-2)">Background</b>
           <button class="btn sm lg press" data-act="wall-shuffle"><span class="dice" aria-hidden="true">🎲</span> Shuffle</button></div>
         <div class="wall-grid" role="group" aria-label="Chat background">${Array.from({ length: window.beamWalls.count }, (_, i) => window.beamWalls.swatch(i, i === window.beamWalls.pick(r.roomId))).join('')}</div>
         <span class="tiny muted">Only changes it on this device.</span>
       </div>` : ''}
       <div class="stack" style="gap:8px">
-        <b class="small" style="color:#33404F">People · ${people.length}</b>
+        <b class="small" style="color:var(--muted-2)">People · ${people.length}</b>
         ${people.map((m) => `<div class="item" style="min-height:56px;background:var(--blue-50)">
-          <span class="av" style="background:${m.role === 'host' ? '#0E1116' : tint(m.id)};color:${m.role === 'host' ? '#fff' : '#0E1116'};border:none">${esc(initial(m.name || m.device))}</span>
+          <span class="av" style="background:${m.role === 'host' ? 'var(--primary)' : tint(m.id)};color:${m.role === 'host' ? 'var(--on-primary)' : '#0E1116'};border:none">${esc(initial(m.name || m.device))}</span>
           <div class="grow"><div class="name">${esc(m.name || m.device)}${m.id === s.memberId ? ' (you)' : ''}</div><div class="meta">${m.role === 'host' ? 'Host' : (m.canSend ? 'Can share files' : 'Chat only')} · ${m.online ? 'here' : 'away'}</div></div>
           ${isHost && m.role !== 'host' && !ended ? `<button class="switch" role="switch" aria-checked="${!!m.canSend}" aria-label="Let ${esc(m.name || m.device)} share files" data-act="member-toggle" data-id="${m.id}" data-on="${!!m.canSend}" ${r.mode === 'all' ? '' : 'disabled'}><span></span></button>
           <button class="circle press" style="width:40px;height:40px;border:none;background:transparent;color:var(--muted)" data-act="remove-member" data-id="${m.id}" aria-label="Remove ${esc(m.name || m.device)}">${I.close}</button>` : ''}
@@ -1238,7 +1240,7 @@
         tile = document.createElement('div');
         tile.className = 'ctile';
         tile.dataset.tile = p.id;
-        tile.innerHTML = `<span class="big-av" style="background:${p.id === me ? '#0E1116' : tint(p.id)};color:${p.id === me ? '#fff' : '#0E1116'}">${esc(initial(name))}</span>
+        tile.innerHTML = `<span class="big-av" style="background:${p.id === me ? 'var(--primary)' : tint(p.id)};color:${p.id === me ? 'var(--on-primary)' : '#0E1116'}">${esc(initial(name))}</span>
           <video playsinline autoplay ${p.id === me ? 'muted class="mirror"' : 'muted'} hidden></video>
           ${p.id === me ? '' : '<audio autoplay></audio>'}
           <span class="label lg"></span><span class="state lg" hidden></span>`;
@@ -1998,6 +2000,12 @@
     'video-play': (el) => playVideo(el.dataset.id),
     'view-photo': (el) => viewPhoto(el.dataset.id),
     'viewer-close': () => closeViewer(),
+    theme: (el) => {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      setTheme(next, true);
+      const svg = el.querySelector(next === 'dark' ? '.sun' : '.moon');
+      if (svg && !reduceMotion) svg.animate([{ transform: 'rotate(-90deg) scale(.4)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 420, easing: 'cubic-bezier(.3,1.6,.5,1)' });
+    },
     'call-start': (el) => startCall(el.dataset.video === '1'),
     'call-leave': () => leaveCall(),
     'call-min': () => { C.min = true; renderCall(); },
@@ -2073,6 +2081,21 @@
     const canSendHere = S.screen === 'room' && S.room && S.session && (S.room.type === 'team' ? (S.room.members.find((m) => m.id === S.session.memberId) || {}).canSend : S.session.role === 'host');
     sendFiles([...e.dataTransfer.files], canSendHere ? S.session.type : 'single');
   });
+
+  // ---------- theme ----------
+  function setTheme(t, remember) {
+    const root = document.documentElement;
+    if (remember && !reduceMotion) { root.classList.add('theme-anim'); setTimeout(() => root.classList.remove('theme-anim'), 450); }
+    root.dataset.theme = t;
+    if (remember) { try { localStorage.setItem('beam_theme', t); } catch { /* ignore */ } }
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = t === 'dark' ? '#0B0F16' : '#EEF5FC';
+  }
+  try {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    setTheme(localStorage.getItem('beam_theme') || (mq.matches ? 'dark' : 'light'), false);
+    mq.addEventListener('change', (e) => { if (!localStorage.getItem('beam_theme')) setTheme(e.matches ? 'dark' : 'light', false); });
+  } catch { /* ignore */ }
 
   // ---------- start ----------
   async function boot() {

@@ -73,7 +73,8 @@
       g(`stroke="${INK}" stroke-opacity=".14" stroke-width="1.6"`, '<path d="M90 190l8-8 8 8 8-8 8 8"/>') }
   ];
 
-  const urlFor = (w) => `url("data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w.size}" height="${w.size}" viewBox="0 0 ${w.size} ${w.size}">${w.svg()}</svg>`)}")`;
+  // Single quotes (and an encoded ') so this is safe inside an HTML style="…" attribute too.
+  const urlFor = (w) => `url('data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w.size}" height="${w.size}" viewBox="0 0 ${w.size} ${w.size}">${w.svg()}</svg>`).replace(/'/g, '%27')}')`;
   const cache = new Map();
   function css(i) {
     if (!cache.has(i)) cache.set(i, urlFor(WALLS[i]));

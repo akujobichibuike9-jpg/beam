@@ -99,6 +99,7 @@
           <b class="tiny">Storage policy</b>
           <span class="tiny muted" style="line-height:1.5">Every transferred file is kept for ${A.ov ? A.ov.settings.retentionDays : 30} days, then deleted for good.</span>
         </div>
+        <button class="btn sm lg press theme-toggle" data-act="theme"><svg class="moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg><svg class="sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span>Theme</span></button>
         <button class="btn sm lg press" data-act="signout">Sign out</button>
       </aside>
       <main class="ad-main">${main}</main>
@@ -140,7 +141,7 @@
       const types = { Images: 0, Videos: 0, Documents: 0, Other: 0 };
       o.types.forEach((t) => { types[t.kind] = t.b; });
       const totalT = Object.values(types).reduce((a, b) => a + b, 0) || 1;
-      const colors = { Images: '#0E1116', Videos: '#4A9BE8', Documents: '#9CCBF5', Other: '#CDE4FA' };
+      const colors = { Images: 'var(--primary)', Videos: '#4A9BE8', Documents: '#9CCBF5', Other: 'var(--blue-100)' };
       return `
         <div class="ad-head"><div class="stack" style="gap:4px"><h1>Overview</h1><span class="muted small">Last 24 hours · updated ${fmtTime(o.now)}</span></div>
           <button class="btn sm lg press" data-act="refresh">Refresh</button></div>
@@ -174,7 +175,7 @@
         <div class="flexrow">
           <section class="panel" style="flex:1 1 360px">
             <div class="row between"><h2>Recently stored</h2><a href="#/files" class="small">See all</a></div>
-            ${o.recent.map((f) => `<div class="row" style="border-top:1px solid #E8EFF7;padding-top:10px"><span class="thumb ${kind(f.mime) === 'vid' ? 'vid' : kind(f.mime) === 'doc' ? 'doc' : ''}" style="width:40px;height:40px">${tagFor(f.mime, f.name)}</span><div class="grow"><div class="name">${esc(f.name)}</div><div class="meta">${fmtSize(f.size)} · ${f.type === 'team' ? 'team' : 'room'} ${mask(f.code)}</div></div><span class="tag">${daysLeft(f.delete_at)} days left</span></div>`).join('') || '<p class="muted small">Nothing stored yet.</p>'}
+            ${o.recent.map((f) => `<div class="row" style="border-top:1px solid var(--line);padding-top:10px"><span class="thumb ${kind(f.mime) === 'vid' ? 'vid' : kind(f.mime) === 'doc' ? 'doc' : ''}" style="width:40px;height:40px">${tagFor(f.mime, f.name)}</span><div class="grow"><div class="name">${esc(f.name)}</div><div class="meta">${fmtSize(f.size)} · ${f.type === 'team' ? 'team' : 'room'} ${mask(f.code)}</div></div><span class="tag">${daysLeft(f.delete_at)} days left</span></div>`).join('') || '<p class="muted small">Nothing stored yet.</p>'}
           </section>
           <section class="panel" style="flex:1 1 360px">
             <h2>Usage</h2>
@@ -275,7 +276,7 @@
             </div></div>`).join('') || '<p class="muted small">Nothing to review.</p>'}
         </section>
         <section class="panel"><h2>Blocked networks</h2>
-          ${r.blocks.map((b) => `<div class="row" style="border-top:1px solid #E8EFF7;padding-top:10px"><code class="grow small">${esc(b.ip_hash)}</code><span class="small muted">${esc(b.reason || '')} · ${fmtDate(b.created_at)}</span><button class="btn sm lg press" data-act="unblock" data-hash="${esc(b.ip_hash)}">Unblock</button></div>`).join('') || '<p class="muted small">No blocks.</p>'}
+          ${r.blocks.map((b) => `<div class="row" style="border-top:1px solid var(--line);padding-top:10px"><code class="grow small">${esc(b.ip_hash)}</code><span class="small muted">${esc(b.reason || '')} · ${fmtDate(b.created_at)}</span><button class="btn sm lg press" data-act="unblock" data-hash="${esc(b.ip_hash)}">Unblock</button></div>`).join('') || '<p class="muted small">No blocks.</p>'}
           <p class="tiny muted">Networks are stored as one-way hashes, never raw IP addresses.</p>
         </section>`;
     },
@@ -293,7 +294,7 @@
       ];
       return `<div class="ad-head"><h1>Settings</h1></div>
         <section class="panel"><h2>Rules</h2>
-          ${rows.map(([l, n, v, key]) => `<div class="row" style="border-top:1px solid #E8EFF7;padding-top:10px"><div class="grow"><div style="font-weight:500">${l}</div><div class="tiny muted">${n} · <code>${key}</code></div></div><span class="tag lg" style="padding:8px 14px">${v}</span></div>`).join('')}
+          ${rows.map(([l, n, v, key]) => `<div class="row" style="border-top:1px solid var(--line);padding-top:10px"><div class="grow"><div style="font-weight:500">${l}</div><div class="tiny muted">${n} · <code>${key}</code></div></div><span class="tag lg" style="padding:8px 14px">${v}</span></div>`).join('')}
           <p class="tiny muted">Change these in <code>wrangler.jsonc</code> under <code>vars</code>, then deploy again.</p>
         </section>`;
     }
@@ -310,7 +311,7 @@
     const bytes = files.filter((f) => f.status !== 'failed').reduce((a, f) => a + f.size, 0);
     const reported = files.some((f) => f.reported);
     let status; let dot;
-    if (r.status === 'removed') { status = reported ? 'Reported · ended by admin' : 'Ended by admin'; dot = '#0E1116'; }
+    if (r.status === 'removed') { status = reported ? 'Reported · ended by admin' : 'Ended by admin'; dot = 'var(--ink)'; }
     else if (r.status === 'expired' && !others.length) { status = 'Code expired, no one joined'; dot = '#9AA4B2'; }
     else if (r.status === 'waiting' || r.status === 'active') { status = 'Live now'; dot = '#4A9BE8'; }
     else if (!files.length) { status = 'No files sent'; dot = '#9AA4B2'; }
@@ -335,7 +336,7 @@
     const mins = Math.max(1, Math.round((end - r.created_at) / 60000));
     return `<div class="hist" style="${open ? 'box-shadow:0 12px 30px rgba(40,90,150,.14)' : ''}">
       <button aria-expanded="${open}" data-act="toggle-room" data-id="${r.id}">
-        <span class="ic" style="background:${team ? '#0E1116' : '#CDE4FA'};color:${team ? '#fff' : '#0E1116'}">${team ? ICON.team : ICON.arrow}</span>
+        <span class="ic" style="background:${team ? 'var(--primary)' : 'var(--blue-100)'};color:${team ? 'var(--on-primary)' : 'var(--ink)'}">${team ? ICON.team : ICON.arrow}</span>
         <span style="flex:1 1 240px;min-width:0" class="stack"><span class="row" style="gap:8px;flex-wrap:wrap"><b style="font-size:15px">${esc(title)}</b><span class="tag ${team ? 'dark' : ''}" style="font-size:11px">${team ? 'Team' : '1 to 1'}</span></span><span class="small muted">${esc(sub)}</span></span>
         <span class="row small" style="flex:0 1 220px;gap:8px;font-weight:500"><span class="state-dot" style="background:${dot}"></span>${esc(status)}</span>
         <span class="small muted" style="width:72px;white-space:nowrap">${fmtTime(r.created_at)}</span>
@@ -343,14 +344,14 @@
       </button>
       ${open ? `<div class="body">
         <div><b class="tiny muted">${team ? 'People in the room' : 'Devices'}</b>
-          ${members.map((m) => `<div class="person"><span class="av" style="background:${m.role === 'host' ? '#0E1116' : '#CDE4FA'};color:${m.role === 'host' ? '#fff' : '#0E1116'}">${esc((m.name || m.device || '?')[0].toUpperCase())}</span>
+          ${members.map((m) => `<div class="person"><span class="av" style="background:${m.role === 'host' ? 'var(--primary)' : 'var(--blue-100)'};color:${m.role === 'host' ? 'var(--on-primary)' : 'var(--ink)'}">${esc((m.name || m.device || '?')[0].toUpperCase())}</span>
             <div class="grow"><div class="name">${esc(m.name || m.device || 'Unknown')}</div><div class="meta">${esc(m.device || '')} · joined ${fmtTime(m.joined_at)}</div></div>
             <span class="tag ${m.role === 'host' ? 'dark' : (m.can_send ? 'blue' : '')}" style="font-size:11px">${role(m)}</span>
             <span class="tiny" style="width:84px;text-align:right;color:${mstate(m) === '—' ? 'var(--muted)' : 'var(--ok)'}">${mstate(m)}</span></div>`).join('')}
         </div>
         ${team ? `<div style="flex-basis:100%"><b class="tiny muted">Chat · ${msgs.length} message${msgs.length === 1 ? '' : 's'}${calls.length ? ` · ${calls.map((c) => `${c.video ? 'video' : 'voice'} call ${fmtTime(c.started_at)} (${c.ended_at ? `${Math.max(1, Math.round((c.ended_at - c.started_at) / 60000))} min` : 'live'}, ${c.peak} people)`).join(', ')}` : ''}</b>
-          <div class="stack" style="gap:6px;max-height:320px;overflow:auto;background:#fff;border:1px solid #E8EFF7;border-radius:14px;padding:10px">
-          ${msgs.map((x) => `<div class="row" style="align-items:flex-start;gap:8px"><span class="tiny muted" style="width:44px;flex-shrink:0;padding-top:2px">${fmtTime(x.created_at)}</span><div class="grow small"><b>${esc(nameOf(x.member_id))}</b> ${esc(x.text)}</div><button class="btn sm press" style="height:30px;padding:0 10px;font-size:12px;background:transparent;border:1px solid #E1EAF4" data-act="delete-msg" data-id="${x.id}">Delete</button></div>`).join('') || '<span class="small muted">No messages.</span>'}
+          <div class="stack" style="gap:6px;max-height:320px;overflow:auto;background:var(--white);border:1px solid var(--line);border-radius:14px;padding:10px">
+          ${msgs.map((x) => `<div class="row" style="align-items:flex-start;gap:8px"><span class="tiny muted" style="width:44px;flex-shrink:0;padding-top:2px">${fmtTime(x.created_at)}</span><div class="grow small"><b>${esc(nameOf(x.member_id))}</b> ${esc(x.text)}</div><button class="btn sm press" style="height:30px;padding:0 10px;font-size:12px;background:transparent;border:1px solid var(--line);color:var(--ink)" data-act="delete-msg" data-id="${x.id}">Delete</button></div>`).join('') || '<span class="small muted">No messages.</span>'}
           </div></div>` : ''}
         <div><b class="tiny muted">Files</b>
           ${files.map((f) => `<a href="#/files" class="person" data-act="open-file" data-file="${f.id}" style="text-decoration:none;color:inherit"><span class="thumb ${kind(f.mime) === 'vid' ? 'vid' : kind(f.mime) === 'doc' ? 'doc' : ''}" style="width:32px;height:32px;font-size:9px">${tagFor(f.mime, f.name)}</span><span class="grow name">${esc(f.name)}</span><span class="tiny muted">${f.status === 'deleted' ? 'deleted' : f.status === 'failed' ? 'failed' : fmtSize(f.size)}</span></a>`).join('') || '<p class="small muted">No files.</p>'}
@@ -406,6 +407,11 @@
 
   // ---------- actions ----------
   const ACT = {
+    theme: () => {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      try { localStorage.setItem('beam_theme', next); } catch (e) { /* ignore */ }
+    },
     signout: () => { sessionStorage.removeItem('beam_admin'); A.token = ''; render(); },
     refresh: () => load(),
     'file-kind': (el) => { A.fileKind = el.dataset.k; loadFiles(); },
