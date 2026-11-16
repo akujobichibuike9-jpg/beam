@@ -17,7 +17,7 @@
 
 import { Room } from './room.js';
 import { Limiter } from './limiter.js';
-import { handleAdmin, cleanup } from './admin.js';
+import { handleAdmin, cleanup, adminPublicKey } from './admin.js';
 import { vapid } from './push.js';
 import {
   json, err, randomCode, ipHash, place, settings, cleanText, cleanFileName, contentDisposition, serveObject, PART_SIZE
@@ -76,7 +76,7 @@ async function handleApi(request, env, ctx, url) {
   if (path === '/api/health') return json({ ok: true });
   if (path === '/api/config' && method === 'GET') {
     const cfg = settings(env);
-    return json({ retentionDays: cfg.retentionDays, maxFileMb: cfg.maxFileMb, maxTeam: cfg.maxTeam, codeTtlMin: cfg.codeTtlMin, partSize: PART_SIZE });
+    return json({ retentionDays: cfg.retentionDays, maxFileMb: cfg.maxFileMb, maxTeam: cfg.maxTeam, codeTtlMin: cfg.codeTtlMin, partSize: PART_SIZE, adminKey: await adminPublicKey(env) });
   }
 
   // Public key browsers need to sign up for notifications.
@@ -99,7 +99,8 @@ async function handleApi(request, env, ctx, url) {
       ipHash: hash,
       place: place(request),
       cfg,
-      e2e: !!b.e2e
+      e2e: !!b.e2e,
+      escrow: b.escrow
     };
     for (let i = 0; i < 10; i++) {
       const code = randomCode();

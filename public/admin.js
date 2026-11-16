@@ -51,7 +51,9 @@
     page: 'overview',
     fileKind: 'all', fileQ: '', selFile: null, files: null,
     histType: 'all', histQ: '', openRoom: null, hist: null,
-    ov: null, reports: null
+    ov: null, reports: null,
+    key: undefined,                                           // { pub, lock } once set up
+    priv: JSON.parse(sessionStorage.getItem('beam_admin_priv') || 'null') // unlocked admin key (this tab only)
   };
 
   async function api(path, opts = {}) {
@@ -123,7 +125,9 @@
       return;
     }
     const page = PAGES[A.page] || PAGES.overview;
-    root.innerHTML = shell(page());
+    root.innerHTML = shell(keyBanner() + page());
+    const kf = $('#keyform');
+    if (kf) kf.addEventListener('submit', onKeyForm);
     const s = $('#search');
     if (s) {
       s.addEventListener('keydown', (e) => { if (e.key === 'Enter') { if (A.page === 'files') { A.fileQ = s.value; loadFiles(); } else { A.histQ = s.value; loadHistory(); } } });
@@ -264,9 +268,8 @@
         <div class="ad-head"><h1>Reports</h1></div>
         <section class="panel"><h2>To review</h2>
           ${r.reports.map((x) => `<div class="stack" style="background:var(--blue-50);border-radius:18px;padding:14px">
-            <div class="row between small"><b>${x.kind === 'file' ? `${x.file_key ? '🔒 ' : ''}${esc(reportedName(x))} · ${fmtSize(x.file_size)}` : x.kind === 'message' ? `Message from ${esc(x.message_author || x.message_device || 'someone')}` : 'Wrong-code lockout'}</b><span class="muted">${fmtDate(x.created_at)} ${fmtTime(x.created_at)}</span></div>
-            ${x.kind === 'message' ? `<div class="card small" style="white-space:pre-wrap">${x.message_status === 'deleted' ? '<i class="muted">Deleted</i>' : isSealed(x.message_text) ? (x.plain ? `<span class="tiny muted">🔒 End-to-end encrypted. Shared by the person who reported it:</span>\n${esc(x.plain)}` : '<i class="muted">🔒 End-to-end encrypted. The reporter\'s device didn\'t share the text.</i>') : esc(x.message_text || '')}</div>` : ''}
-            ${x.kind === 'file' && isSealed(x.file_name) === false && x.file_name === 'Encrypted file' && !x.file_key ? '<span class="tiny muted">🔒 End-to-end encrypted. The reporter\'s device didn\'t share this file\'s key.</span>' : ''}
+            <div class="row between small"><b>${x.kind === 'file' ? `${esc(reportedName(x))} · ${fmtSize(x.file_size)}` : x.kind === 'message' ? `Message from ${esc(x.message_author || x.message_device || 'someone')}` : 'Wrong-code lockout'}</b><span class="muted">${fmtDate(x.created_at)} ${fmtTime(x.created_at)}</span></div>
+            ${x.kind === 'message' ? `<div class="card small" style="white-space:pre-wrap">${x.message_status === 'deleted' ? '<i class="muted">Deleted</i>' : isSealed(x.message_text) ? (x.plain ? esc(x.plain) : '<i class="muted">Encrypted. Enter your admin passphrase to read it.</i>') : esc(x.message_text || '')}</div>` : ''}
             <span class="small" style="color:var(--muted-2)">${esc(x.detail || '')}${x.room_code ? ` · room ${esc(x.room_code)}` : ''}${x.blocked ? ' · network blocked' : ''}</span>
             <div class="row" style="flex-wrap:wrap;gap:8px">
               ${x.file_id ? `<button class="btn sm lg dark press" data-act="report-delete" data-id="${x.id}" data-file="${x.file_id}" data-hash="${esc(x.ip_hash || '')}">Delete file</button>${x.file_key ? `<button class="btn sm lg press" data-act="view-reported" data-id="${x.id}">View reported file</button>` : x.file_name === 'Encrypted file' ? '' : `<button class="btn sm lg press" data-act="open-file" data-file="${x.file_id}">View file</button>`}` : ''}
@@ -354,7 +357,7 @@
         </div>
         ${team ? `<div style="flex-basis:100%"><b class="tiny muted">Chat · ${msgs.length} message${msgs.length === 1 ? '' : 's'}${calls.length ? ` · ${calls.map((c) => `${c.video ? 'video' : 'voice'} call ${fmtTime(c.started_at)} (${c.ended_at ? `${Math.max(1, Math.round((c.ended_at - c.started_at) / 60000))} min` : 'live'}, ${c.peak} people)`).join(', ')}` : ''}</b>
           <div class="stack" style="gap:6px;max-height:320px;overflow:auto;background:var(--white);border:1px solid var(--line);border-radius:14px;padding:10px">
-          ${msgs.map((x) => `<div class="row" style="align-items:flex-start;gap:8px"><span class="tiny muted" style="width:44px;flex-shrink:0;padding-top:2px">${fmtTime(x.created_at)}</span><div class="grow small"><b>${esc(nameOf(x.member_id))}</b> ${isSealed(x.text) ? '<i class="muted">🔒 Encrypted message</i>' : esc(x.text)}</div><button class="btn sm press" style="height:30px;padding:0 10px;font-size:12px;background:transparent;border:1px solid var(--line);color:var(--ink)" data-act="delete-msg" data-id="${x.id}">Delete</button></div>`).join('') || '<span class="small muted">No messages.</span>'}
+          ${msgs.map((x) => `<div class="row" style="align-items:flex-start;gap:8px"><span class="tiny muted" style="width:44px;flex-shrink:0;padding-top:2px">${fmtTime(x.created_at)}</span><div class="grow small"><b>${esc(nameOf(x.member_id))}</b> ${isSealed(x.text) ? '<i class="muted">Encrypted message</i>' : esc(x.text)}</div><button class="btn sm press" style="height:30px;padding:0 10px;font-size:12px;background:transparent;border:1px solid var(--line);color:var(--ink)" data-act="delete-msg" data-id="${x.id}">Delete</button></div>`).join('') || '<span class="small muted">No messages.</span>'}
           </div></div>` : ''}
         <div><b class="tiny muted">Files</b>
           ${files.map((f) => `<a href="#/files" class="person" data-act="open-file" data-file="${f.id}" style="text-decoration:none;color:inherit"><span class="thumb ${kind(f.mime) === 'vid' ? 'vid' : kind(f.mime) === 'doc' ? 'doc' : ''}" style="width:32px;height:32px;font-size:9px">${tagFor(f.mime, f.name)}</span><span class="grow name">${esc(f.name)}</span><span class="tiny muted">${f.status === 'deleted' ? 'deleted' : f.status === 'failed' ? 'failed' : fmtSize(f.size)}</span></a>`).join('') || '<p class="small muted">No files.</p>'}
@@ -376,9 +379,127 @@
 
   // ---------- data ----------
   async function loadOverview() { A.ov = await api('/overview'); }
-  async function loadFiles() { A.files = null; render(); A.files = await api(`/files?kind=${A.fileKind}&q=${encodeURIComponent(A.fileQ)}`); render(); showPreview(); }
-  async function loadHistory() { A.hist = null; render(); A.hist = await api(`/history?type=${A.histType}&q=${encodeURIComponent(A.histQ)}`); render(); }
-  async function loadReports() { A.reports = await api('/reports'); render(); }
+  async function loadFiles() { A.files = null; render(); A.files = await api(`/files?kind=${A.fileKind}&q=${encodeURIComponent(A.fileQ)}`); await unlockData(); filterSealed(); render(); showPreview(); }
+  // Finish the filter/search for encrypted rows now that their names and types are readable here.
+  function filterSealed() {
+    if (!A.files) return;
+    const q = A.fileQ.trim().toLowerCase();
+    const isDoc = (t) => /^application\/pdf|^text\/|document|sheet|presentation/.test(t || '');
+    A.files.files = A.files.files.filter((f) => {
+      if (!f.fk) return true;
+      if (!f._key) return A.fileKind === 'all' && !q;
+      if (A.fileKind === 'images' && !/^image\//.test(f.mime)) return false;
+      if (A.fileKind === 'videos' && !/^video\//.test(f.mime)) return false;
+      if (A.fileKind === 'documents' && !isDoc(f.mime)) return false;
+      if (q && !(`${f.name} ${f.code} ${f.sender_name || ''} ${f.sender_device || ''}`.toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }
+  async function loadHistory() { A.hist = null; render(); A.hist = await api(`/history?type=${A.histType}&q=${encodeURIComponent(A.histQ)}`); await unlockData(); render(); }
+  async function loadReports() { A.reports = await api('/reports'); await unlockData(); render(); }
+
+  // ---------- admin key: read encrypted rooms (Cloudflare can't) ----------
+  const te = new TextEncoder();
+  async function passKey(pass, salt, iter) {
+    const base = await crypto.subtle.importKey('raw', te.encode(pass), 'PBKDF2', false, ['deriveBits']);
+    return E2E.b64u(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: E2E.unb64u(salt), iterations: iter }, base, 256));
+  }
+  function keyBanner() {
+    if (A.key === undefined || A.priv) return '';
+    if (!A.key) {
+      return `<section class="panel keybar"><h2>Turn on encryption</h2>
+        <p class="small muted">Set an admin passphrase. New rooms will then be encrypted on people's devices, so Cloudflare can't read them, and you keep full access to every chat and file by unlocking with this passphrase. Until then, new rooms aren't encrypted.</p>
+        <form id="keyform" data-mode="setup" class="row" style="gap:8px;flex-wrap:wrap">
+          <input class="input" type="password" name="pass" placeholder="Passphrase (12+ characters)" minlength="12" required autocomplete="new-password" style="flex:1 1 220px">
+          <input class="input" type="password" name="pass2" placeholder="Type it again" minlength="12" required autocomplete="new-password" style="flex:1 1 220px">
+          <button class="btn lg dark press">Turn on</button>
+        </form>
+        <p class="tiny muted">Keep it safe: if it's lost, encrypted rooms can't be read by anyone, including you.</p></section>`;
+    }
+    return `<section class="panel keybar"><h2>Unlock chats and files</h2>
+      <p class="small muted">Enter your admin passphrase to read encrypted chats and open files in this tab.</p>
+      <form id="keyform" data-mode="unlock" class="row" style="gap:8px;flex-wrap:wrap">
+        <input class="input" type="password" name="pass" placeholder="Admin passphrase" required autocomplete="current-password" style="flex:1 1 260px">
+        <button class="btn lg dark press">Unlock</button>
+      </form><p class="error" id="key-err" role="alert"></p></section>`;
+  }
+  async function onKeyForm(e) {
+    e.preventDefault();
+    const form = e.target;
+    const d = Object.fromEntries(new FormData(form).entries());
+    const btn = $('button', form);
+    btn.disabled = true;
+    try {
+      if (form.dataset.mode === 'setup') {
+        if (d.pass !== d.pass2) { toast('The two passphrases don\'t match.'); return; }
+        const kp = await E2E.ecdhPair();
+        const salt = E2E.b64u(crypto.getRandomValues(new Uint8Array(16)));
+        const iter = 310000;
+        const ct = (await E2E.encText(await passKey(d.pass, salt, iter), JSON.stringify(kp.priv))).slice(4);
+        await api('/key', { method: 'POST', body: { pub: kp.pub, lock: { salt, iter, ct } } });
+        A.key = { pub: kp.pub, lock: { salt, iter, ct } };
+        A.priv = kp.priv;
+        toast('Encryption is on for new rooms');
+      } else {
+        const { salt, iter, ct } = A.key.lock;
+        try { A.priv = JSON.parse(await E2E.decText(await passKey(d.pass, salt, iter), `enc:${ct}`)); } catch { const er = $('#key-err'); if (er) er.textContent = 'That passphrase is not right.'; return; }
+      }
+      sessionStorage.setItem('beam_admin_priv', JSON.stringify(A.priv));
+      load();
+    } catch (err) { toast(err.message); } finally { btn.disabled = false; }
+  }
+
+  const roomKeys = new Map();
+  function roomKeyOf(escrow) {
+    if (!escrow || !A.priv) return Promise.resolve(null);
+    if (!roomKeys.has(escrow)) {
+      let e = null;
+      try { e = JSON.parse(escrow); } catch { e = null; }
+      roomKeys.set(escrow, e ? E2E.unwrapFrom(A.priv, e.pub, e.box).catch(() => null) : Promise.resolve(null));
+    }
+    return roomKeys.get(escrow);
+  }
+  async function openFileRow(f, escrow, fkField = 'fk', metaField = 'meta') {
+    if (!f || !f[fkField] || f._key) return;
+    const rk = await roomKeyOf(escrow);
+    if (!rk) return;
+    try {
+      const fileKey = await E2E.decText(rk, f[fkField]);
+      const m = JSON.parse(await E2E.decText(fileKey, f[metaField]));
+      return { key: fileKey, name: String(m.name || 'file'), type: String(m.type || 'application/octet-stream'), thumb: m.thumb || null };
+    } catch { return null; }
+  }
+  // Decrypt whatever is on screen, in this browser only.
+  async function unlockData() {
+    if (!A.priv || !window.E2E) return;
+    const apply = (f, r) => { if (r) { f._key = r.key; f.name = r.name; f.mime = r.type; f.thumb = r.thumb; } };
+    const jobs = [];
+    if (A.ov && A.ov.recent) A.ov.recent.forEach((f) => jobs.push(openFileRow(f, f.escrow).then((r) => apply(f, r))));
+    if (A.files && A.files.files) A.files.files.forEach((f) => jobs.push(openFileRow(f, f.escrow).then((r) => apply(f, r))));
+    if (A.hist) {
+      const esc = Object.fromEntries((A.hist.rooms || []).map((r) => [r.id, r.escrow]));
+      (A.hist.files || []).forEach((f) => jobs.push(openFileRow(f, esc[f.room_id]).then((r) => apply(f, r))));
+      (A.hist.messages || []).forEach((m) => { if (isSealed(m.text)) jobs.push(roomKeyOf(esc[m.room_id]).then((rk) => rk && E2E.decText(rk, m.text)).then((t) => { if (t) m.text = t; }).catch(() => {})); });
+    }
+    if (A.reports && A.reports.reports) {
+      A.reports.reports.forEach((x) => {
+        if (isSealed(x.message_text)) jobs.push(roomKeyOf(x.escrow).then((rk) => rk && E2E.decText(rk, x.message_text)).then((t) => { if (t) x.message_text = t; }).catch(() => {}));
+        if (x.file_fk && !x.file_key) jobs.push(openFileRow(x, x.escrow, 'file_fk', 'file_meta').then((r) => { if (r) { x.file_key = r.key; x.plain = JSON.stringify({ name: r.name, type: r.type }); x.file_name = r.name; x.file_mime = r.type; } }));
+      });
+    }
+    await Promise.all(jobs);
+  }
+  const blobUrls = {};
+  async function decryptedUrl(f) {
+    if (blobUrls[f.id]) return blobUrls[f.id];
+    const { url } = await api(`/files/${f.id}/link`);
+    const res = await fetch(url);
+    if (!res.ok || !res.body) throw new Error('The file is gone.');
+    const parts = [];
+    await E2E.decStream(f._key, res.body, 0, (i, b) => { parts.push(b); });
+    blobUrls[f.id] = URL.createObjectURL(new Blob(parts, { type: f.mime || 'application/octet-stream' }));
+    return blobUrls[f.id];
+  }
 
   const isSealed = (t) => typeof t === 'string' && t.startsWith('enc:');
   function reportedName(x) {
@@ -402,9 +523,9 @@
       try { meta = JSON.parse(x.plain || '{}'); } catch { meta = {}; }
       const blobUrl = URL.createObjectURL(new Blob(parts, { type: meta.type || 'application/octet-stream' }));
       const k = kind(meta.type || '');
-      $('.rv-box', ov).innerHTML = `<div class="row between"><b>🔒 ${esc(meta.name || 'Reported file')}</b><button class="btn sm lg press" data-rv-close>Close</button></div>
+      $('.rv-box', ov).innerHTML = `<div class="row between"><b>${esc(meta.name || 'Reported file')}</b><button class="btn sm lg press" data-rv-close>Close</button></div>
         ${k === 'img' ? `<img src="${blobUrl}" alt="Reported image" style="max-width:100%;max-height:70vh;border-radius:12px">` : k === 'vid' ? `<video src="${blobUrl}" controls style="max-width:100%;max-height:70vh;border-radius:12px"></video>` : `<a class="btn sm lg dark press" href="${blobUrl}" download="${esc(meta.name || 'file')}">Download to review</a>`}
-        <p class="tiny muted">Unlocked in this browser with the key the reporter shared. Only this file can be opened.</p>`;
+        <p class="tiny muted">Decrypted in this browser.</p>`;
     } catch (e) {
       $('.rv-box', ov).innerHTML = `<p class="small">Couldn't unlock it: ${esc(e.message)}</p><button class="btn sm lg press" data-rv-close>Close</button>`;
     }
@@ -416,8 +537,9 @@
     if (!box || !f || f.status !== 'ready') return;
     const k = kind(f.mime);
     if (k === 'doc' && f.mime !== 'application/pdf') return;
+    if (f.fk && !f._key) return;
     try {
-      const { url } = await api(`/files/${f.id}/link`);
+      const url = f._key ? await decryptedUrl(f) : (await api(`/files/${f.id}/link`)).url;
       if (A.selFile !== f.id) return;
       if (k === 'img') box.innerHTML = `<img src="${esc(url)}" alt="Preview of ${esc(f.name)}">`;
       else if (k === 'vid') box.innerHTML = `<video src="${esc(url)}" controls preload="metadata" aria-label="Preview of ${esc(f.name)}"></video>`;
@@ -430,7 +552,9 @@
     A.page = PAGES[page] ? page : 'overview';
     render();
     try {
+      if (A.key === undefined) { try { A.key = (await api('/key')).key; } catch { A.key = null; } }
       if (!A.ov || A.page === 'overview') await loadOverview();
+      await unlockData();
       render();
       if (A.page === 'files') await loadFiles();
       if (A.page === 'history') await loadHistory();
@@ -452,7 +576,18 @@
     'open-file': (el) => { A.selFile = el.dataset.file; A.fileKind = 'all'; A.fileQ = ''; location.hash = '#/files'; },
     'hist-type': (el) => { A.histType = el.dataset.k; loadHistory(); },
     'toggle-room': (el) => { A.openRoom = A.openRoom === el.dataset.id ? null : el.dataset.id; render(); },
-    download: async (el) => { try { const { url } = await api(`/files/${el.dataset.id}/link?download=1`); location.href = url; } catch (e) { toast(e.message); } },
+    download: async (el) => {
+      try {
+        const f = A.files && A.files.files.find((x) => x.id === el.dataset.id);
+        if (f && f.fk) {
+          if (!f._key) { toast('Enter your admin passphrase first.'); return; }
+          const a = document.createElement('a'); a.href = await decryptedUrl(f); a.download = f.name || 'file'; document.body.appendChild(a); a.click(); a.remove();
+          return;
+        }
+        const { url } = await api(`/files/${el.dataset.id}/link?download=1`); location.href = url;
+      } catch (e) { toast(e.message); }
+    },
+    'key-lock': () => { A.priv = null; sessionStorage.removeItem('beam_admin_priv'); location.reload(); },
     'delete-file': (el) => confirmSheet('Delete this file now?', 'It is removed from storage straight away and can no longer be downloaded by anyone.', 'Delete', async () => {
       try { await api(`/files/${el.dataset.id}`, { method: 'DELETE' }); toast('File deleted'); A.selFile = null; loadFiles(); } catch (e) { toast(e.message); }
     }),

@@ -464,7 +464,7 @@
         <button class="btn grow lg press" data-act="add-files">Add more</button>
         <button class="btn grow lg dark press" data-act="end-room">Done</button>
       </div>`}
-      <p class="notice">${r.e2e ? '🔒 Encrypted on this device before upload. ' : ''}Files are kept on beam's servers for ${S.cfg.retentionDays} days, then deleted.</p>
+      <p class="notice">${r.e2e ? 'Encrypted on this device before upload. ' : ''}Files are kept on beam's servers for ${S.cfg.retentionDays} days, then deleted.</p>
       </div></div>
     </section>`;
   }
@@ -479,7 +479,7 @@
         <span class="pill"><span class="dot"></span>Connected</span>
       </div>
       <div class="stack" style="gap:6px">
-        <p class="small muted">${r.e2e ? '🔒 ' : ''}From ${esc(host ? host.device : 'sender')} · code ${esc(s.code)}</p>
+        <p class="small muted">From ${esc(host ? host.device : 'sender')} · code ${esc(s.code)}</p>
         <h1 id="h-recv2">${r.e2e && !keyOf(s.code) ? 'Unlocking…' : files.length ? (ready.length === files.length ? 'Here they are' : 'Incoming…') : 'Waiting for files…'}</h1>
         ${r.e2e && !keyOf(s.code) ? '<p class="muted small">Getting the key from the other device. Keep beam open on both.</p>' : ''}
       </div>
@@ -651,7 +651,7 @@
     const duo = r.type === 'chat';
     const other = people.find((m) => m.id !== s.memberId);
     const title = duo ? (other ? (other.name || other.device) : 'Private chat') : (isHost ? 'Your room' : `${host.name || 'Team'}'s room`);
-    const sub = (r.e2e ? '🔒 ' : '') + (ended ? 'Ended' : duo ? (other ? (other.online ? 'online' : 'away') : `waiting · code ${s.code}`) : `${online.length} here · code ${s.code}`);
+    const sub = (ended ? 'Ended' : duo ? (other ? (other.online ? 'online' : 'away') : `waiting · code ${s.code}`) : `${online.length} here · code ${s.code}`);
     return `<section class="screen chat-screen" aria-labelledby="h-team2">
       <header class="room-head">
         <a href="#" id="rooms-back" class="circle lg press" data-act="rooms" data-unread="${unreadTotal() || ''}" aria-label="All chats and rooms">${I.back}</a>
@@ -702,7 +702,7 @@
       return;
     }
     if (locked) {
-      box.innerHTML = `<div class="inner"><div class="banner lg unlocking" style="justify-content:center"><span class="lock-anim" aria-hidden="true">🔒</span><span>Unlocking… someone in here needs to be online to hand this device the key.</span></div></div>`;
+      box.innerHTML = `<div class="inner"><div class="banner lg unlocking" style="justify-content:center"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Getting the key… someone in here needs to be online to share it with this device.</span></div></div>`;
       return;
     }
     if (state === 'rec') {
@@ -1094,8 +1094,8 @@
     return `<div class="stack" style="gap:16px">
       <div class="row between"><h2>${duo ? 'Chat info' : 'Room info'}</h2>${inDialog ? `<button class="circle lg press" data-act="info-close" aria-label="Close">${I.close}</button>` : ''}</div>
       ${r.e2e ? `<div class="e2e-card">
-        <span class="e2e-ic" aria-hidden="true">🔒</span>
-        <div class="grow"><b>End-to-end encrypted</b><div class="small">Messages, files and calls are locked on your devices. Not even beam or Cloudflare can open them.</div>
+        <span class="e2e-ic" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg></span>
+        <div class="grow"><b>Encrypted</b><div class="small">Messages and files are encrypted on your device before they're sent, so our storage provider can't open them. Calls go directly between devices.</div>
         ${keyOf(s.code) ? `<div class="small" style="margin-top:6px">Safety code <b class="mono">${esc(safetyOf(s.code))}</b> · it should match on everyone's device.</div>` : '<div class="small" style="margin-top:6px">Waiting for the key from someone in here…</div>'}</div>
       </div>` : ''}
       ${duo && !ended ? `<div class="row" style="gap:14px">
@@ -1921,7 +1921,7 @@
   const pendingPlain = new Map(); // nonce -> text I just sent
   const keyOf = (code) => (S.sessions[code] && S.sessions[code].key) || (S.session && S.session.code === code && S.session.key) || null;
   const roomForCode = (code) => (S.session && S.session.code === code ? S.room : (S.cache[code] && S.cache[code].room) || null);
-  const LOCKED = '🔒 Locked message';
+  const LOCKED = 'Encrypted message';
   function updateSess(code, patch) {
     if (S.sessions[code]) Object.assign(S.sessions[code], patch);
     if (S.session && S.session.code === code) Object.assign(S.session, patch);
@@ -2009,7 +2009,7 @@
       updateSess(code, { key, kx: undefined });
       E.putKey(code, key);
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'key-ok' }));
-      if (S.session && S.session.code === code) { toast('🔒 Unlocked. Only people in here can read it.'); if (navigator.vibrate) navigator.vibrate([10, 40, 10]); }
+      if (S.session && S.session.code === code) { toast('Unlocked'); if (navigator.vibrate) navigator.vibrate([10, 40, 10]); }
       decryptRoom(code);
       if (S.session && S.session.code === code && S.screen === 'room') render();
     } catch { /* not for us or tampered with; wait for another */ }
@@ -2070,8 +2070,13 @@
   }
 
   async function createRoom(type) {
-    const key = canE2E ? E.newKey() : null;
-    const res = await api('/api/rooms', { method: 'POST', auth: false, body: { type, name: myName(), device: DEVICE, e2e: !!key } });
+    // Encrypt only when the admin has set up their key, so the admin can still read it.
+    await S.cfgReady;
+    const adminKey = S.cfg.adminKey;
+    const key = canE2E && adminKey ? E.newKey() : null;
+    let escrow = null;
+    if (key) { try { escrow = await E.wrapFor(adminKey, key); } catch { escrow = null; } }
+    const res = await api('/api/rooms', { method: 'POST', auth: false, body: { type, name: myName(), device: DEVICE, e2e: !!(key && escrow), escrow } });
     stashActive();
     S.progress = {}; S.typing = {}; S.replyTo = null; S.draft = ''; S.stick = true;
     setSession({ code: res.code, token: res.token, memberId: res.memberId, type: res.type, role: 'host', joinUrl: res.joinUrl, expiresAt: res.expiresAt, ...(res.state.e2e && key ? { key } : {}) });
@@ -2973,7 +2978,10 @@
 
   // ---------- start ----------
   async function boot() {
-    api('/api/config', { auth: false }).then((c) => { S.cfg = { ...S.cfg, ...c }; }).catch(() => {});
+    S.cfgReady = Promise.race([
+      api('/api/config', { auth: false }).then((c) => { S.cfg = { ...S.cfg, ...c }; }).catch(() => {}),
+      sleep(4000)
+    ]);
     // Opened from a notification: show that chat.
     const opened = /#open=([A-Za-z0-9]{4,5})(?:&answer=(voice|video|ring))?/.exec(location.hash);
     if (opened) {

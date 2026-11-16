@@ -169,9 +169,14 @@ export class Room extends DurableObject {
   }
 
   // ---------- room lifecycle ----------
-  async create({ code, type, name, device, ipHash, place, cfg, e2e }) {
+  async create({ code, type, name, device, ipHash, place, cfg, e2e, escrow }) {
     await this.load();
     if (this.live()) return { error: 'taken' };
+    // Encrypted rooms must include the room key sealed to the admin key, so the
+    // admin keeps full access (and Cloudflare still can't read anything).
+    const esc = e2e && escrow && /^[A-Za-z0-9_-]{87}$/.test(String(escrow.pub || '')) && /^[A-Za-z0-9_-]{40,120}$/.test(String(escrow.box || ''))
+      ? JSON.stringify({ pub: escrow.pub, box: escrow.box }) : null;
+    if (e2e && !esc) e2e = false;
     const now = Date.now();
     const hostId = rid(10);
     const token = rid(32);
@@ -201,8 +206,8 @@ export class Room extends DurableObject {
     };
     await this.save();
     await this.ctx.storage.setAlarm(this.s.expiresAt);
-    await this.db('INSERT INTO rooms (id, code, type, mode, status, place, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      this.s.roomId, code, type, 'all', 'waiting', place, now);
+    await this.db('INSERT INTO rooms (id, code, type, mode, status, place, created_at, escrow) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      this.s.roomId, code, type, 'all', 'waiting', place, now, esc);
     await this.db('INSERT INTO members (id, room_id, name, device, role, can_send, ip_hash, joined_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       hostId, this.s.roomId, name, device, 'host', 1, ipHash, now);
     return {
@@ -377,8 +382,8 @@ export class Room extends DurableObject {
     };
     this.s.files[id] = f;
     await this.save();
-    await this.db('INSERT INTO files (id, room_id, sender_id, name, mime, size, r2_key, upload_id, status, created_at, delete_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      id, this.s.roomId, me.id, name, f.type, size, key, f.uploadId, 'uploading', now, now + this.s.retentionMs);
+    await this.db('INSERT INTO files (id, room_id, sender_id, name, mime, size, r2_key, upload_id, status, created_at, delete_at, fk, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      id, this.s.roomId, me.id, name, f.type, size, key, f.uploadId, 'uploading', now, now + this.s.retentionMs, f.fk, f.meta);
     this.pushState();
     return { fileId: id, partSize: PART_SIZE };
   }

@@ -87,28 +87,29 @@ The admin API already needs `ADMIN_TOKEN`. For a second lock, put
 Access → Applications → Self-hosted). Only the email addresses you list can
 then reach them.
 
-## End-to-end encryption
+## Encryption (Cloudflare can't read it; the admin can)
 
-Every new transfer, private chat and team room is end-to-end encrypted. Files,
-voice notes, photos, file names, previews and messages are locked on the
-sender's device before upload; Cloudflare and the admin dashboard only ever see
-scrambled data. Calls were already encrypted device-to-device (WebRTC).
+Turn it on once in the admin dashboard by setting an **admin passphrase**. From
+then on, every new transfer, private chat and team room is encrypted on people's
+devices before anything is uploaded: Cloudflare only stores scrambled files,
+names, previews and messages. The admin keeps full access by unlocking the
+dashboard with the passphrase; everything is decrypted in the admin's browser.
+Until a passphrase is set, rooms are not encrypted (so the admin never loses access).
 
-- **Room key:** a random 256-bit key made by the device that starts the room. It
-  never reaches the server: it rides in the QR/invite link after `#` (browsers
-  never send that part), or, when someone types the 5-character code, a device
-  already in the room seals it to the newcomer with an ECDH key exchange that
-  the server only relays. The newcomer sees "Unlocking…" until someone is online.
-- **Files:** each file has its own random key and is encrypted in 1 MB AES-GCM
-  blocks (`public/e2e.js`). The service worker (`public/sw.js`) decrypts on the
-  device and serves `/e2e/<file>` with Range support, so videos stream and seek.
-- **Safety code:** chat info shows an 8-digit code derived from the key. If it
-  matches on everyone's devices, nobody (including a tampered server) swapped keys.
-- **Notifications:** the push carries sealed text; the phone's service worker
-  unlocks the preview.
-- **Reports:** reporting shares only that item with the admin: the decrypted text
-  of the message, or that one file's key. Everything else stays locked.
-- Rooms created before this update stay unencrypted until they end.
+- **Admin key:** the dashboard makes a key pair. The public half is handed to
+  every device (`/api/config`); the private half is stored on the server only
+  locked with the passphrase (PBKDF2, 310k rounds + AES-GCM). Lose the passphrase
+  and encrypted rooms can't be read by anyone.
+- **Room key:** made by the device that starts a room, sealed to the admin key
+  (stored as `rooms.escrow`), and shared with members via the QR/invite link (after
+  `#`, never sent to the server) or handed over device-to-device (ECDH) when someone
+  types the code.
+- **Files:** each file has its own key and is encrypted in 1 MB AES-GCM blocks
+  (`public/e2e.js`); the service worker decrypts on the device with Range support,
+  so videos stream and seek. Notification previews are unlocked on the phone.
+- **Reports** are logged as before, including the reported text or that file's key
+  from the reporter's device.
+- Calls are encrypted device-to-device (WebRTC) and are not recorded.
 
 ## Fast video sending
 

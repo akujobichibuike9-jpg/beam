@@ -22,6 +22,8 @@ export async function handleAdmin(request, env, url) {
   if (path === '/history' && method === 'GET') return history(env, url);
   if (path === '/reports' && method === 'GET') return reports(env);
   if (path === '/settings' && method === 'GET') return json(settings(env));
+  if (path === '/key' && method === 'GET') return getAdminKey(env);
+  if (path === '/key' && method === 'POST') return setAdminKey(request, env);
 
   m = path.match(/^\/files\/([a-z0-9]+)\/link$/);
   if (m && method === 'GET') return signedLink(env, m[1], url);
@@ -79,7 +81,7 @@ async function overview(env) {
       (SELECT COALESCE(SUM(size),0) FROM files f WHERE f.room_id = r.id AND f.status != 'deleted') AS bytes
      FROM rooms r WHERE r.status IN ('waiting','active') ORDER BY r.created_at DESC LIMIT 50`);
   const recent = await all(env,
-    `SELECT f.id, f.name, f.mime, f.size, f.created_at, f.delete_at, r.code, r.type
+    `SELECT f.id, f.name, f.mime, f.size, f.created_at, f.delete_at, r.code, r.type, f.fk, f.meta, r.escrow
      FROM files f JOIN rooms r ON r.id = f.room_id WHERE f.status = 'ready' ORDER BY f.created_at DESC LIMIT 5`);
   const cfg = settings(env);
   const storedGb = stored.b / 1e9;
@@ -111,18 +113,19 @@ async function listFiles(env, url) {
   const where = ["f.status IN ('ready','uploading')"];
   const args = [];
   if (q) {
-    where.push('(f.name LIKE ? OR r.code LIKE ? OR m.device LIKE ? OR m.name LIKE ?)');
+    // Encrypted names can only be searched in the admin's browser, so include those rows.
+    where.push('(f.name LIKE ? OR r.code LIKE ? OR m.device LIKE ? OR m.name LIKE ? OR f.fk IS NOT NULL)');
     const like = `%${q}%`;
     args.push(like, like, like, like);
   }
-  if (kind === 'images') where.push("f.mime LIKE 'image/%'");
-  if (kind === 'videos') where.push("f.mime LIKE 'video/%'");
-  if (kind === 'documents') where.push("(f.mime LIKE 'application/pdf' OR f.mime LIKE 'text/%' OR f.mime LIKE '%document%' OR f.mime LIKE '%sheet%' OR f.mime LIKE '%presentation%')");
+  if (kind === 'images') where.push("(f.mime LIKE 'image/%' OR f.fk IS NOT NULL)");
+  if (kind === 'videos') where.push("(f.mime LIKE 'video/%' OR f.fk IS NOT NULL)");
+  if (kind === 'documents') where.push("(f.mime LIKE 'application/pdf' OR f.mime LIKE 'text/%' OR f.mime LIKE '%document%' OR f.mime LIKE '%sheet%' OR f.mime LIKE '%presentation%' OR f.fk IS NOT NULL)");
   if (kind === 'team') where.push("r.type = 'team'");
   if (kind === 'reported') where.push('f.reported = 1');
   const rows = await all(env,
-    `SELECT f.id, f.name, f.mime, f.size, f.status, f.reported, f.created_at, f.delete_at,
-            r.id AS room_id, r.code, r.type, r.place,
+    `SELECT f.id, f.name, f.mime, f.size, f.status, f.reported, f.created_at, f.delete_at, f.fk, f.meta,
+            r.id AS room_id, r.code, r.type, r.place, r.escrow,
             m.name AS sender_name, m.device AS sender_device, m.ip_hash AS sender_ip,
             (SELECT COUNT(*) FROM members x WHERE x.room_id = r.id) - 1 AS recipients,
             (SELECT COUNT(*) FROM downloads d WHERE d.file_id = f.id) AS downloads
@@ -149,7 +152,7 @@ async function history(env, url) {
   const ids = JSON.stringify(rooms.map((r) => r.id));
   const [members, files, downloads, messages, calls] = await Promise.all([
     all(env, 'SELECT id, room_id, name, device, role, can_send, ip_hash, joined_at FROM members WHERE room_id IN (SELECT value FROM json_each(?)) ORDER BY joined_at', ids),
-    all(env, 'SELECT id, room_id, sender_id, name, mime, size, status, reported, created_at, delete_at FROM files WHERE room_id IN (SELECT value FROM json_each(?)) ORDER BY created_at', ids),
+    all(env, 'SELECT id, room_id, sender_id, name, mime, size, status, reported, created_at, delete_at, fk, meta FROM files WHERE room_id IN (SELECT value FROM json_each(?)) ORDER BY created_at', ids),
     all(env, 'SELECT d.file_id, d.member_id, d.at FROM downloads d JOIN files f ON f.id = d.file_id WHERE f.room_id IN (SELECT value FROM json_each(?))', ids),
     all(env, "SELECT id, room_id, member_id, text, reply_to, created_at FROM messages WHERE status = 'ok' AND room_id IN (SELECT value FROM json_each(?)) ORDER BY created_at", ids),
     all(env, 'SELECT * FROM calls WHERE room_id IN (SELECT value FROM json_each(?)) ORDER BY started_at', ids)
@@ -161,7 +164,7 @@ async function history(env, url) {
 
 async function reports(env) {
   const rows = await all(env,
-    `SELECT rp.*, f.name AS file_name, f.size AS file_size, f.mime AS file_mime, r.code AS room_code,
+    `SELECT rp.*, f.name AS file_name, f.size AS file_size, f.mime AS file_mime, f.fk AS file_fk, f.meta AS file_meta, r.code AS room_code, r.escrow AS escrow,
             msg.text AS message_text, msg.status AS message_status, mem.name AS message_author, mem.device AS message_device, mem.ip_hash AS message_ip,
             (SELECT 1 FROM blocks b WHERE b.ip_hash = COALESCE(mem.ip_hash, rp.ip_hash)) AS blocked
      FROM reports rp LEFT JOIN files f ON f.id = rp.file_id LEFT JOIN rooms r ON r.id = rp.room_id
@@ -299,4 +302,35 @@ export async function cleanup(env) {
     env.DB.prepare('DELETE FROM calls WHERE started_at < ?').bind(cutoff)
   ]);
   return { deleted, stuck: stuck.length, id: rid(4) };
+}
+
+// ---------- admin key (lets the admin read encrypted rooms; Cloudflare can't) ----------
+// The admin's browser makes a key pair. The public half is given to every device so
+// new rooms seal their room key to it. The private half is stored here locked with
+// the admin's passphrase (PBKDF2 + AES-GCM), so only someone with it can unlock.
+async function kvGet(env, k) {
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)').run();
+  const row = await env.DB.prepare('SELECT v FROM kv WHERE k = ?').bind(k).first();
+  return row ? JSON.parse(row.v) : null;
+}
+async function getAdminKey(env) {
+  return json({ key: await kvGet(env, 'admin_key') });
+}
+async function setAdminKey(request, env) {
+  let b = {};
+  try { b = await request.json(); } catch (e) { b = {}; }
+  const pub = String(b.pub || '');
+  const lock = b.lock || {};
+  if (!/^[A-Za-z0-9_-]{87}$/.test(pub)) return err(400, 'bad_key');
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(lock.salt || '')) || !/^[A-Za-z0-9_-]{100,2000}$/.test(String(lock.ct || '')) || !(Number(lock.iter) >= 100000)) return err(400, 'bad_key');
+  const existing = await kvGet(env, 'admin_key');
+  // Changing the passphrase keeps the same key pair; a brand-new key needs `replace`.
+  if (existing && existing.pub !== pub && !b.replace) return err(409, 'key_exists', 'An admin key is already set.');
+  const v = JSON.stringify({ pub, lock: { salt: lock.salt, iter: Number(lock.iter), ct: lock.ct }, at: Date.now() });
+  await env.DB.prepare('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').bind('admin_key', v).run();
+  return json({ ok: true });
+}
+
+export async function adminPublicKey(env) {
+  try { const k = await kvGet(env, 'admin_key'); return k ? k.pub : null; } catch (e) { return null; }
 }
