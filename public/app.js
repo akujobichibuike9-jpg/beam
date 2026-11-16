@@ -975,14 +975,29 @@
 
   function makePeer(id) {
     const pc = new RTCPeerConnection({ iceServers: C.ice || [] });
-    const peer = { id, pc, stream: null, pending: [] };
+    const peer = { id, pc, stream: null, pending: [], since: Date.now(), restarts: 0, warned: false };
     C.local.getTracks().forEach((t) => pc.addTrack(t, C.local));
     pc.onicecandidate = (e) => { if (e.candidate) wsSend({ t: 'signal', to: id, data: { ice: e.candidate.toJSON() } }); };
     pc.ontrack = (e) => { peer.stream = e.streams[0] || new MediaStream([e.track]); watchLevel(id, peer.stream); renderCall(); };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' && pc.restartIce) pc.restartIce();
+      const st = pc.connectionState;
+      if (st === 'connected') { peer.since = 0; peer.restarts = 0; }
+      // If the link drops, the person who started it tries again with fresh routes.
+      if ((st === 'failed' || st === 'disconnected') && meId() < id && peer.restarts < 3) {
+        peer.restarts++;
+        setTimeout(() => { if (C.peers.get(id) === peer && pc.connectionState !== 'connected') sendOffer(peer, true); }, st === 'failed' ? 0 : 2500);
+      }
       renderCall();
     };
+    // Give up waiting after 15 seconds and say why.
+    setTimeout(() => {
+      if (C.peers.get(id) !== peer || pc.connectionState === 'connected' || peer.warned) return;
+      peer.warned = true;
+      const m = memberById(id);
+      const turn = (C.ice || []).some((x) => [].concat(x.urls).some((u) => /^turns?:/.test(u)));
+      toast(turn ? `Still connecting to ${m ? (m.name || m.device) : 'them'}… their connection may be weak.` : `Can't reach ${m ? (m.name || m.device) : 'them'}. One of your networks is blocking calls.`, true);
+      renderCall();
+    }, 15000);
     C.peers.set(id, peer);
     return peer;
   }
@@ -995,9 +1010,9 @@
     C.levels.delete(id);
   }
 
-  async function sendOffer(peer) {
+  async function sendOffer(peer, restart = false) {
     try {
-      const offer = await peer.pc.createOffer();
+      const offer = await peer.pc.createOffer(restart ? { iceRestart: true } : undefined);
       await peer.pc.setLocalDescription(offer);
       wsSend({ t: 'signal', to: peer.id, data: { sdp: peer.pc.localDescription.toJSON() } });
     } catch (e) { console.warn('offer failed', e); }
@@ -1144,7 +1159,7 @@
       const connecting = p.id !== me && (!peer || !peer.stream || ['new', 'connecting'].includes(peer.pc.connectionState));
       const failed = peer && ['failed', 'disconnected'].includes(peer.pc.connectionState);
       st.hidden = !(connecting || failed);
-      st.textContent = failed ? 'Reconnecting…' : 'Connecting…';
+      st.textContent = peer && peer.warned && peer.pc.connectionState !== 'connected' ? 'Can\'t connect' : (failed ? 'Reconnecting…' : 'Connecting…');
     }
     $$('[data-tile]', grid).forEach((t) => { if (!keep.has(t.dataset.tile)) t.remove(); });
     const mic = $('#c-mic'); const cam = $('#c-cam');
