@@ -147,6 +147,7 @@
         <div class="kpis">
           <div class="kpi"><span class="small muted">Transfers today</span><b>${o.transfers24}</b><span class="note">1-to-1 and team rooms</span></div>
           <div class="kpi"><span class="small muted">Live right now</span><b>${o.live}</b><span class="note">${o.waiting} waiting for a partner</span></div>
+          <div class="kpi"><span class="small muted">Messages today</span><b>${o.messages24}</b><span class="note">${o.calls24} calls · ${o.liveCalls} live now</span></div>
           <div class="kpi"><span class="small muted">Data moved</span><b>${fmtSize(o.moved24)}</b><span class="note">${Math.round(o.teamShare * 100)}% in team rooms</span></div>
           <div class="kpi"><span class="small muted">Files stored</span><b>${fmtSize(o.storedBytes)}</b><span class="note">${o.storedFiles} files · rolling ${o.settings.retentionDays} days</span></div>
         </div>
@@ -233,6 +234,7 @@
       if (h) {
         const byRoom = (arr) => arr.reduce((m, x) => { (m[x.room_id] = m[x.room_id] || []).push(x); return m; }, {});
         const members = byRoom(h.members); const files = byRoom(h.files);
+        const msgs = byRoom(h.messages || []); const calls = byRoom(h.calls || []);
         const dls = h.downloads.reduce((m, d) => { (m[d.file_id] = m[d.file_id] || new Set()).add(d.member_id); return m; }, {});
         const groups = [];
         for (const r of h.rooms) {
@@ -242,7 +244,7 @@
           g.items.push(r);
         }
         body = groups.map((g) => `<section class="stack"><h2 class="small muted" style="font-family:var(--body);font-weight:600">${esc(g.label)}</h2>
-          ${g.items.map((r) => roomCard(r, members[r.id] || [], files[r.id] || [], dls)).join('')}</section>`).join('') || '<div class="panel"><p class="muted">No transfers in this period.</p></div>';
+          ${g.items.map((r) => roomCard(r, members[r.id] || [], files[r.id] || [], dls, msgs[r.id] || [], calls[r.id] || [])).join('')}</section>`).join('') || '<div class="panel"><p class="muted">No transfers in this period.</p></div>';
       }
       return `
         <div class="ad-head"><div class="stack" style="gap:4px"><h1>Transfer history</h1><span class="muted small">Every 1-to-1 and team transfer from the last ${A.ov ? A.ov.settings.retentionDays : 30} days</span></div>
@@ -261,11 +263,14 @@
         <div class="ad-head"><h1>Reports</h1></div>
         <section class="panel"><h2>To review</h2>
           ${r.reports.map((x) => `<div class="stack" style="background:var(--blue-50);border-radius:18px;padding:14px">
-            <div class="row between small"><b>${x.kind === 'file' ? `${esc(x.file_name || 'File')} · ${fmtSize(x.file_size)}` : 'Wrong-code lockout'}</b><span class="muted">${fmtDate(x.created_at)} ${fmtTime(x.created_at)}</span></div>
+            <div class="row between small"><b>${x.kind === 'file' ? `${esc(x.file_name || 'File')} · ${fmtSize(x.file_size)}` : x.kind === 'message' ? `Message from ${esc(x.message_author || x.message_device || 'someone')}` : 'Wrong-code lockout'}</b><span class="muted">${fmtDate(x.created_at)} ${fmtTime(x.created_at)}</span></div>
+            ${x.kind === 'message' ? `<div class="card small" style="white-space:pre-wrap">${x.message_status === 'deleted' ? '<i class="muted">Deleted</i>' : esc(x.message_text || '')}</div>` : ''}
             <span class="small" style="color:var(--muted-2)">${esc(x.detail || '')}${x.room_code ? ` · room ${esc(x.room_code)}` : ''}${x.blocked ? ' · network blocked' : ''}</span>
             <div class="row" style="flex-wrap:wrap;gap:8px">
               ${x.file_id ? `<button class="btn sm lg dark press" data-act="report-delete" data-id="${x.id}" data-file="${x.file_id}" data-hash="${esc(x.ip_hash || '')}">Delete file</button><button class="btn sm lg press" data-act="open-file" data-file="${x.file_id}">View file</button>` : ''}
-              ${x.ip_hash && !x.blocked ? `<button class="btn sm lg press" data-act="block-ip" data-hash="${esc(x.ip_hash)}">Block network</button>` : ''}
+              ${x.kind === 'message' && x.message_status !== 'deleted' ? `<button class="btn sm lg dark press" data-act="report-delete-msg" data-id="${x.id}" data-msg="${x.message_id}">Delete message</button>` : ''}
+              ${x.kind === 'message' && x.message_ip && !x.blocked ? `<button class="btn sm lg press" data-act="block-ip" data-hash="${esc(x.message_ip)}">Block sender's network</button>` : ''}
+              ${x.kind !== 'message' && x.ip_hash && !x.blocked ? `<button class="btn sm lg press" data-act="block-ip" data-hash="${esc(x.ip_hash)}">Block network</button>` : ''}
               <button class="btn sm lg press" data-act="report-done" data-id="${x.id}">Dismiss</button>
             </div></div>`).join('') || '<p class="muted small">Nothing to review.</p>'}
         </section>
@@ -294,7 +299,7 @@
     }
   };
 
-  function roomCard(r, members, files, dls) {
+  function roomCard(r, members, files, dls, msgs = [], calls = []) {
     const open = A.openRoom === r.id;
     const team = r.type === 'team';
     const host = members.find((m) => m.role === 'host') || {};
@@ -314,9 +319,10 @@
     if (reported && r.status !== 'removed') { status += ' · reported'; }
     const title = team ? `${host.name ? `${host.name}'s` : 'Team'} room` : `${host.device || 'Device'} → ${others[0] ? others[0].device : 'no one joined'}`;
     const sub = team
-      ? `Host: ${host.name || host.device || '?'} · ${r.mode === 'host' ? 'only host sends' : 'everyone can send'} · ${members.length} people · ${files.length} file${files.length === 1 ? '' : 's'} · ${fmtSize(bytes)}`
+      ? `Host: ${host.name || host.device || '?'} · ${members.length} people · ${files.length} file${files.length === 1 ? '' : 's'} · ${msgs.length} message${msgs.length === 1 ? '' : 's'}${calls.length ? ` · ${calls.length} call${calls.length === 1 ? '' : 's'}` : ''} · ${fmtSize(bytes)}`
       : `${files.length} file${files.length === 1 ? '' : 's'} · ${fmtSize(bytes)}`;
-    const role = (m) => (m.role === 'host' ? (team ? 'Host' : 'Sender') : (team ? (m.can_send ? 'Can send' : 'Receive only') : 'Receiver'));
+    const role = (m) => (m.role === 'host' ? (team ? 'Host' : 'Sender') : m.role === 'removed' ? 'Removed' : (team ? (m.can_send ? 'Can send' : 'Receive only') : 'Receiver'));
+    const nameOf = (id) => { const m = members.find((x) => x.id === id); return m ? (m.name || m.device || 'Someone') : 'Someone'; };
     const sentBy = (m) => files.filter((f) => f.sender_id === m.id).length;
     const mstate = (m) => {
       const n = sentBy(m);
@@ -342,6 +348,10 @@
             <span class="tag ${m.role === 'host' ? 'dark' : (m.can_send ? 'blue' : '')}" style="font-size:11px">${role(m)}</span>
             <span class="tiny" style="width:84px;text-align:right;color:${mstate(m) === '—' ? 'var(--muted)' : 'var(--ok)'}">${mstate(m)}</span></div>`).join('')}
         </div>
+        ${team ? `<div style="flex-basis:100%"><b class="tiny muted">Chat · ${msgs.length} message${msgs.length === 1 ? '' : 's'}${calls.length ? ` · ${calls.map((c) => `${c.video ? 'video' : 'voice'} call ${fmtTime(c.started_at)} (${c.ended_at ? `${Math.max(1, Math.round((c.ended_at - c.started_at) / 60000))} min` : 'live'}, ${c.peak} people)`).join(', ')}` : ''}</b>
+          <div class="stack" style="gap:6px;max-height:320px;overflow:auto;background:#fff;border:1px solid #E8EFF7;border-radius:14px;padding:10px">
+          ${msgs.map((x) => `<div class="row" style="align-items:flex-start;gap:8px"><span class="tiny muted" style="width:44px;flex-shrink:0;padding-top:2px">${fmtTime(x.created_at)}</span><div class="grow small"><b>${esc(nameOf(x.member_id))}</b> ${esc(x.text)}</div><button class="btn sm press" style="height:30px;padding:0 10px;font-size:12px;background:transparent;border:1px solid #E1EAF4" data-act="delete-msg" data-id="${x.id}">Delete</button></div>`).join('') || '<span class="small muted">No messages.</span>'}
+          </div></div>` : ''}
         <div><b class="tiny muted">Files</b>
           ${files.map((f) => `<a href="#/files" class="person" data-act="open-file" data-file="${f.id}" style="text-decoration:none;color:inherit"><span class="thumb ${kind(f.mime) === 'vid' ? 'vid' : kind(f.mime) === 'doc' ? 'doc' : ''}" style="width:32px;height:32px;font-size:9px">${tagFor(f.mime, f.name)}</span><span class="grow name">${esc(f.name)}</span><span class="tiny muted">${f.status === 'deleted' ? 'deleted' : f.status === 'failed' ? 'failed' : fmtSize(f.size)}</span></a>`).join('') || '<p class="small muted">No files.</p>'}
           <dl class="facts" style="font-size:12px">
@@ -421,6 +431,16 @@
     },
     unblock: async (el) => { try { await api(`/block/${el.dataset.hash}`, { method: 'DELETE' }); loadReports(); } catch (e) { toast(e.message); } },
     'report-done': async (el) => { try { await api(`/reports/${el.dataset.id}`, { method: 'POST', body: { status: 'dismissed' } }); await loadOverview(); loadReports(); } catch (e) { toast(e.message); } },
+    'delete-msg': (el) => confirmSheet('Delete this message?', 'It disappears from the room for everyone straight away.', 'Delete', async () => {
+      try { await api(`/messages/${el.dataset.id}`, { method: 'DELETE' }); toast('Message deleted'); loadHistory(); } catch (e) { toast(e.message); }
+    }),
+    'report-delete-msg': (el) => confirmSheet('Delete the reported message?', 'It disappears from the room for everyone and the report is marked resolved.', 'Delete', async () => {
+      try {
+        await api(`/messages/${el.dataset.msg}`, { method: 'DELETE' });
+        await api(`/reports/${el.dataset.id}`, { method: 'POST', body: { status: 'resolved' } });
+        toast('Deleted'); await loadOverview(); loadReports();
+      } catch (e) { toast(e.message); }
+    }),
     'report-delete': (el) => confirmSheet('Delete the reported file?', 'The file is removed now and the report is marked resolved.', 'Delete', async () => {
       try {
         await api(`/files/${el.dataset.file}`, { method: 'DELETE' });

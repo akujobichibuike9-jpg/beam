@@ -68,6 +68,32 @@ export function contentDisposition(name, inline = false) {
   return `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
 
+// Serve an R2 object, honouring Range requests (Safari needs them to play audio/video).
+export async function serveObject(env, key, request, headers) {
+  const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get('range') || '');
+  if (range) {
+    const head = await env.FILES.head(key);
+    if (!head) return null;
+    const size = head.size;
+    let start = range[1] === '' ? null : Number(range[1]);
+    let end = range[2] === '' ? null : Number(range[2]);
+    if (start === null) { start = Math.max(0, size - (end || 0)); end = size - 1; }
+    if (end === null || end >= size) end = size - 1;
+    if (start >= size || start > end) {
+      return new Response(null, { status: 416, headers: { 'content-range': `bytes */${size}` } });
+    }
+    const obj = await env.FILES.get(key, { range: { offset: start, length: end - start + 1 } });
+    if (!obj) return null;
+    return new Response(obj.body, {
+      status: 206,
+      headers: { ...headers, 'accept-ranges': 'bytes', 'content-range': `bytes ${start}-${end}/${size}`, 'content-length': String(end - start + 1) }
+    });
+  }
+  const obj = await env.FILES.get(key);
+  if (!obj) return null;
+  return new Response(obj.body, { headers: { ...headers, 'accept-ranges': 'bytes', 'content-length': String(obj.size) } });
+}
+
 // Constant-time string comparison for the admin token.
 export function safeEqual(a, b) {
   a = String(a || '');

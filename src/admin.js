@@ -1,7 +1,7 @@
 // Admin API. Every route needs `Authorization: Bearer <ADMIN_TOKEN>`,
 // except signed file links (short-lived, for <img>/<video> previews).
 
-import { json, err, safeEqual, hmac, settings, contentDisposition, rid } from './util.js';
+import { json, err, safeEqual, hmac, settings, contentDisposition, rid, serveObject } from './util.js';
 
 const DAY = 24 * 3600 * 1000;
 
@@ -11,7 +11,7 @@ export async function handleAdmin(request, env, url) {
 
   // Signed preview/download links work without the header.
   let m = path.match(/^\/files\/([a-z0-9]+)\/raw$/);
-  if (m && method === 'GET') return rawFile(env, m[1], url);
+  if (m && method === 'GET') return rawFile(request, env, m[1], url);
 
   if (!env.ADMIN_TOKEN) return err(503, 'admin_not_configured', 'Set the ADMIN_TOKEN secret first.');
   const auth = request.headers.get('authorization') || '';
@@ -29,6 +29,8 @@ export async function handleAdmin(request, env, url) {
   if (m && method === 'DELETE') return deleteFile(env, m[1]);
   m = path.match(/^\/rooms\/([a-z0-9]+)$/);
   if (m && method === 'DELETE') return deleteRoom(env, m[1]);
+  m = path.match(/^\/messages\/([a-z0-9]+)$/);
+  if (m && method === 'DELETE') return deleteMessage(env, m[1]);
   m = path.match(/^\/rooms\/([a-z0-9]+)\/end$/);
   if (m && method === 'POST') return endRoom(env, m[1]);
   m = path.match(/^\/reports\/([a-z0-9]+)$/);
@@ -60,6 +62,7 @@ async function overview(env) {
     first(env, "SELECT COALESCE(SUM(size),0) AS b, COUNT(*) AS n FROM files WHERE status = 'ready'"),
     first(env, "SELECT COUNT(*) AS n FROM reports WHERE status = 'open'")
   ]);
+  const chat = await first(env, 'SELECT (SELECT COUNT(*) FROM messages WHERE created_at >= ?) AS messages, (SELECT COUNT(*) FROM calls WHERE started_at >= ?) AS calls, (SELECT COUNT(*) FROM calls WHERE ended_at IS NULL) AS live_calls', since, since);
   const hourlyRows = await all(env,
     'SELECT CAST((created_at - ?) / 3600000 AS INTEGER) AS h, COUNT(*) AS n FROM rooms WHERE created_at >= ? GROUP BY h', since, since);
   const hourly = new Array(24).fill(0);
@@ -90,6 +93,9 @@ async function overview(env) {
     storedBytes: stored.b,
     storedFiles: stored.n,
     openReports: openReports.n,
+    messages24: chat.messages || 0,
+    calls24: chat.calls || 0,
+    liveCalls: chat.live_calls || 0,
     hourly,
     types: typeRows,
     liveRooms,
@@ -135,27 +141,31 @@ async function history(env, url) {
   const args = [since];
   if (type === 'single' || type === 'team') { where.push('r.type = ?'); args.push(type); }
   if (q) {
-    where.push('(r.code LIKE ? OR EXISTS (SELECT 1 FROM members m WHERE m.room_id = r.id AND (m.device LIKE ? OR m.name LIKE ?)) OR EXISTS (SELECT 1 FROM files f WHERE f.room_id = r.id AND f.name LIKE ?))');
+    where.push("(r.code LIKE ? OR EXISTS (SELECT 1 FROM members m WHERE m.room_id = r.id AND (m.device LIKE ? OR m.name LIKE ?)) OR EXISTS (SELECT 1 FROM files f WHERE f.room_id = r.id AND f.name LIKE ?) OR EXISTS (SELECT 1 FROM messages x WHERE x.room_id = r.id AND x.status = 'ok' AND x.text LIKE ?))");
     const like = `%${q}%`;
-    args.push(like, like, like, like);
+    args.push(like, like, like, like, like);
   }
   const rooms = await all(env, `SELECT r.* FROM rooms r WHERE ${where.join(' AND ')} ORDER BY r.created_at DESC LIMIT 150`, ...args);
   const ids = JSON.stringify(rooms.map((r) => r.id));
-  const [members, files, downloads] = await Promise.all([
+  const [members, files, downloads, messages, calls] = await Promise.all([
     all(env, 'SELECT id, room_id, name, device, role, can_send, ip_hash, joined_at FROM members WHERE room_id IN (SELECT value FROM json_each(?)) ORDER BY joined_at', ids),
     all(env, 'SELECT id, room_id, sender_id, name, mime, size, status, reported, created_at, delete_at FROM files WHERE room_id IN (SELECT value FROM json_each(?)) ORDER BY created_at', ids),
-    all(env, 'SELECT d.file_id, d.member_id, d.at FROM downloads d JOIN files f ON f.id = d.file_id WHERE f.room_id IN (SELECT value FROM json_each(?))', ids)
+    all(env, 'SELECT d.file_id, d.member_id, d.at FROM downloads d JOIN files f ON f.id = d.file_id WHERE f.room_id IN (SELECT value FROM json_each(?))', ids),
+    all(env, "SELECT id, room_id, member_id, text, reply_to, created_at FROM messages WHERE status = 'ok' AND room_id IN (SELECT value FROM json_each(?)) ORDER BY created_at", ids),
+    all(env, 'SELECT * FROM calls WHERE room_id IN (SELECT value FROM json_each(?)) ORDER BY started_at', ids)
   ]);
   const counts = await first(env,
     "SELECT COUNT(*) AS n, SUM(CASE WHEN type = 'team' THEN 1 ELSE 0 END) AS teams FROM rooms WHERE created_at >= ?", since);
-  return json({ rooms, members, files, downloads, counts });
+  return json({ rooms, members, files, downloads, messages, calls, counts });
 }
 
 async function reports(env) {
   const rows = await all(env,
     `SELECT rp.*, f.name AS file_name, f.size AS file_size, f.mime AS file_mime, r.code AS room_code,
-            (SELECT 1 FROM blocks b WHERE b.ip_hash = rp.ip_hash) AS blocked
+            msg.text AS message_text, msg.status AS message_status, mem.name AS message_author, mem.device AS message_device, mem.ip_hash AS message_ip,
+            (SELECT 1 FROM blocks b WHERE b.ip_hash = COALESCE(mem.ip_hash, rp.ip_hash)) AS blocked
      FROM reports rp LEFT JOIN files f ON f.id = rp.file_id LEFT JOIN rooms r ON r.id = rp.room_id
+     LEFT JOIN messages msg ON msg.id = rp.message_id LEFT JOIN members mem ON mem.id = msg.member_id
      WHERE rp.status = 'open' ORDER BY rp.created_at DESC LIMIT 100`);
   const blocks = await all(env, 'SELECT * FROM blocks ORDER BY created_at DESC LIMIT 100');
   return json({ reports: rows, blocks });
@@ -168,7 +178,7 @@ async function signedLink(env, id, url) {
   return json({ url: `/api/admin/files/${id}/raw?exp=${exp}&d=${disposition}&sig=${sig}` });
 }
 
-async function rawFile(env, id, url) {
+async function rawFile(request, env, id, url) {
   if (!env.ADMIN_TOKEN) return err(503, 'admin_not_configured');
   const exp = Number(url.searchParams.get('exp'));
   const d = url.searchParams.get('d') === 'attachment' ? 'attachment' : 'inline';
@@ -177,19 +187,15 @@ async function rawFile(env, id, url) {
   if (!safeEqual(sig, await hmac(env.ADMIN_TOKEN, `${id}.${exp}.${d}`))) return err(403, 'bad_signature');
   const f = await first(env, 'SELECT * FROM files WHERE id = ?', id);
   if (!f.id || f.status === 'deleted') return err(404, 'not_found');
-  const obj = await env.FILES.get(f.r2_key, { range: undefined });
-  if (!obj) return err(404, 'not_found');
-  return new Response(obj.body, {
-    headers: {
-      'content-type': f.mime || 'application/octet-stream',
-      'content-length': String(obj.size),
-      'content-disposition': contentDisposition(f.name, d === 'inline'),
-      'cache-control': 'private, max-age=600',
-      'x-content-type-options': 'nosniff',
-      // Previews never run scripts, even for HTML/SVG uploads.
-      'content-security-policy': "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox"
-    }
+  const res = await serveObject(env, f.r2_key, request, {
+    'content-type': f.mime || 'application/octet-stream',
+    'content-disposition': contentDisposition(f.name, d === 'inline'),
+    'cache-control': 'private, max-age=600',
+    'x-content-type-options': 'nosniff',
+    // Previews never run scripts, even for HTML/SVG uploads.
+    'content-security-policy': "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox"
   });
+  return res || err(404, 'not_found');
 }
 
 async function deleteFile(env, id) {
@@ -220,6 +226,18 @@ async function endRoom(env, roomId) {
   const snap = await stub.peek();
   if (snap && snap.roomId === room.id) await stub.end({ admin: true });
   else await env.DB.prepare("UPDATE rooms SET status = 'removed', ended_at = ? WHERE id = ? AND status IN ('waiting','active')").bind(Date.now(), roomId).run();
+  return json({ ok: true });
+}
+
+async function deleteMessage(env, id) {
+  const msg = await first(env, 'SELECT m.id, r.code, r.id AS room_id FROM messages m JOIN rooms r ON r.id = m.room_id WHERE m.id = ?', id);
+  if (!msg.id) return err(404, 'not_found');
+  await env.DB.prepare("UPDATE messages SET status = 'deleted' WHERE id = ?").bind(id).run();
+  try {
+    const stub = env.ROOMS.get(env.ROOMS.idFromName(msg.code));
+    const peek = await stub.peek();
+    if (peek && peek.roomId === msg.room_id) await stub.deleteMessage({ messageId: id });
+  } catch (e) { /* room gone */ }
   return json({ ok: true });
 }
 
@@ -276,7 +294,9 @@ export async function cleanup(env) {
     env.DB.prepare("DELETE FROM files WHERE status = 'deleted' AND room_id IN (SELECT id FROM rooms WHERE created_at < ?)").bind(cutoff),
     env.DB.prepare('DELETE FROM members WHERE room_id IN (SELECT id FROM rooms WHERE created_at < ?) AND room_id NOT IN (SELECT room_id FROM files)').bind(cutoff),
     env.DB.prepare('DELETE FROM rooms WHERE created_at < ? AND id NOT IN (SELECT room_id FROM files)').bind(cutoff),
-    env.DB.prepare("DELETE FROM reports WHERE status != 'open' AND created_at < ?").bind(cutoff)
+    env.DB.prepare("DELETE FROM reports WHERE status != 'open' AND created_at < ?").bind(cutoff),
+    env.DB.prepare('DELETE FROM messages WHERE created_at < ?').bind(cutoff),
+    env.DB.prepare('DELETE FROM calls WHERE started_at < ?').bind(cutoff)
   ]);
   return { deleted, stuck: stuck.length, id: rid(4) };
 }

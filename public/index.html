@@ -27,8 +27,13 @@
 <main class="app" id="app" aria-live="polite"></main>
 <nav class="nav" id="nav" aria-label="Main"></nav>
 
+<div class="composer" id="composer" hidden></div>
+<section class="call" id="call" hidden aria-label="Call"></section>
+<button class="callpill lg dark" id="callpill" hidden data-act="call-open"></button>
+
 <input type="file" id="picker" multiple hidden>
 <dialog class="sheet" id="sheet"></dialog>
+<dialog class="sheet" id="info" aria-label="Room info"></dialog>
 
 <noscript><p style="padding:24px">beam needs JavaScript to send files.</p></noscript>
 <script src="/vendor/qrcode.js"></script>

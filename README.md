@@ -51,7 +51,7 @@ npm test
 3. **Create the database:** `npx wrangler d1 create beam`
    Copy the `database_id` it prints into `wrangler.jsonc`, replacing
    `REPLACE_WITH_YOUR_D1_DATABASE_ID`.
-4. **Create the tables:** `npm run db:remote`
+4. **Create the tables:** `npm run db:remote` (run it again after updates that add files to `migrations/`)
 5. **Set the secrets:**
    ```bash
    npx wrangler secret put ADMIN_TOKEN   # a long random password for the admin
@@ -61,6 +61,19 @@ npm test
 
 Wrangler prints your address, e.g. `https://beam.<you>.workers.dev`. To use your
 own domain, add it under the Worker's **Settings → Domains & Routes** in the dashboard.
+
+### Make calls work on strict networks (recommended)
+
+Calls connect devices directly. Some networks block that, and then a relay is needed.
+1. In the Cloudflare dashboard go to **Realtime → TURN Server** and create a TURN key.
+2. Add its ID and API token to the Worker as secrets:
+   ```bash
+   npx wrangler secret put TURN_KEY_ID
+   npx wrangler secret put TURN_KEY_API_TOKEN
+   ```
+   (or under **Settings → Variables and Secrets** in the dashboard).
+
+Without these, calls still work on most home Wi-Fi and mobile networks.
 
 ### Lock down the admin page (recommended)
 
@@ -92,6 +105,13 @@ Change these in `wrangler.jsonc` under `vars`, then deploy again:
   picks **Everyone** or **Only me** for who can send, and can switch individual people
   to receive-only. Everyone sees new files arrive live. A team room stays open for
   12 hours or until the host ends it.
+- **Chat in team rooms:** messages and files in one feed, replies, emoji reactions
+  (double-tap for ❤️, press and hold for more), "typing…", and voice notes (tap the mic,
+  tap again to send). Everyone can always chat. The host decides who can share files and
+  voice notes, and can remove people. Messages are kept for 30 days like files.
+- **Voice and video calls:** anyone in a team room can start a call, and up to 8 people can
+  join. Devices connect straight to each other; the room only introduces them. On strict
+  networks (some schools, offices and mobile networks) calls need Cloudflare's TURN relay, see below.
 - **Reports and blocks:** receivers can report a file. Admins can delete it and block
   the sender's network. Networks are stored as one-way hashes, never as raw IP addresses.
 - **Privacy:** the app tells people before they send that files are kept for 30

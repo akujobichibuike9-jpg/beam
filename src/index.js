@@ -19,7 +19,7 @@ import { Room } from './room.js';
 import { Limiter } from './limiter.js';
 import { handleAdmin, cleanup } from './admin.js';
 import {
-  json, err, randomCode, ipHash, place, settings, cleanText, cleanFileName, contentDisposition, PART_SIZE
+  json, err, randomCode, ipHash, place, settings, cleanText, cleanFileName, contentDisposition, serveObject, PART_SIZE
 } from './util.js';
 
 export { Room, Limiter };
@@ -155,7 +155,41 @@ async function handleApi(request, env, ctx, url) {
     return fromRoom(await stub.setMode({ token, mode: b.mode }));
   }
 
-  let mm = rest.match(/^\/members\/([a-z0-9]+)$/);
+  let mm = rest.match(/^\/members\/([a-z0-9]+)\/remove$/);
+  if (mm && method === 'POST') return fromRoom(await stub.removeMember({ token, memberId: mm[1] }));
+
+  mm = rest.match(/^\/messages\/([a-z0-9]+)\/report$/);
+  if (mm && method === 'POST') {
+    const b = await body(request);
+    return fromRoom(await stub.reportMessage({ token, messageId: mm[1], reason: cleanText(b.reason, 300), ipHash: await ipHash(request, env) }));
+  }
+
+  // Connection details for calls. With a Cloudflare TURN key set, calls also
+  // work on strict networks (school, office, some mobile networks).
+  if (rest === '/ice' && method === 'GET') {
+    const snap = await stub.snapshot({ token });
+    if (snap.error) return fromRoom(snap);
+    const stun = { iceServers: [{ urls: ['stun:stun.cloudflare.com:3478'] }] };
+    if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return json(stun);
+    try {
+      const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ ttl: 4 * 3600 })
+      });
+      if (!r.ok) return json(stun);
+      const data = await r.json();
+      // Browsers block port 53, so drop those addresses to avoid slow timeouts.
+      const iceServers = (data.iceServers || []).map((s) => ({
+        ...s, urls: (Array.isArray(s.urls) ? s.urls : [s.urls]).filter((u) => !/:53(\?|$)/.test(u))
+      }));
+      return json({ iceServers });
+    } catch (e) {
+      return json(stun);
+    }
+  }
+
+  mm = rest.match(/^\/members\/([a-z0-9]+)$/);
   if (mm && method === 'POST') {
     const b = await body(request);
     return fromRoom(await stub.setMember({ token, memberId: mm[1], canSend: !!b.canSend }));
@@ -173,7 +207,10 @@ async function handleApi(request, env, ctx, url) {
       name: cleanFileName(b.name),
       size: Number(b.size),
       type: cleanText(b.type, 100),
-      thumb: b.thumb
+      thumb: b.thumb,
+      voice: !!b.voice,
+      duration: Number(b.duration) || 0,
+      wave: typeof b.wave === 'string' ? b.wave : ''
     }));
   }
 
@@ -211,18 +248,14 @@ async function handleApi(request, env, ctx, url) {
   if (mm && method === 'GET') {
     const auth = await stub.downloadAuth({ token, fileId: mm[1] });
     if (auth.error) return fromRoom(auth);
-    const obj = await env.FILES.get(auth.key);
-    if (!obj) return err(404, 'gone', 'This file has been deleted.');
-    return new Response(obj.body, {
-      headers: {
-        'content-type': auth.type || 'application/octet-stream',
-        'content-length': String(obj.size),
-        'content-disposition': contentDisposition(auth.name, url.searchParams.get('inline') === '1'),
-        'cache-control': 'private, no-store',
-        'x-content-type-options': 'nosniff',
-        'content-security-policy': "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox"
-      }
+    const res = await serveObject(env, auth.key, request, {
+      'content-type': auth.type || 'application/octet-stream',
+      'content-disposition': contentDisposition(auth.name, url.searchParams.get('inline') === '1'),
+      'cache-control': 'private, max-age=3600',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox"
     });
+    return res || err(404, 'gone', 'This file has been deleted.');
   }
 
   return err(404, 'not_found');
