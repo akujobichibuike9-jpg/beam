@@ -75,6 +75,8 @@
     moon: `<svg class="moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>`,
     sun: `<svg class="sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>`,
     bubble: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>`,
+    bell: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>`,
+    bellOff: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.6 3.9A6 6 0 0 1 18 9c0 3 .6 4.9 1.3 6M6 9c0 6-2.5 7.5-2.5 7.5H16"/><path d="M10 20a2 2 0 0 0 4 0M3 3l18 18"/></svg>`,
     pen: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>`
   };
 
@@ -83,7 +85,7 @@
     screen: 'home',
     cfg: { retentionDays: 30, maxFileMb: 2048, partSize: 20 * 1024 * 1024 },
     session: store.sget('beam_session'),   // the room on screen: { code, token, memberId, type, role, joinUrl, expiresAt }
-    sessions: store.sget('beam_sessions') || {}, // every room you're in, by code
+    sessions: store.get('beam_sessions', null) || store.sget('beam_sessions') || {}, // every room you're in, by code (kept on this device)
     cache: {},                             // code -> { room, unread } for rooms in the background
     watch: {},                             // code -> background connection
     room: null,                            // public room state from the server
@@ -261,7 +263,7 @@
   const SCREENS = {
     home() {
       return `<section class="screen home" aria-labelledby="h-home">
-        ${header(`<div class="row" style="gap:10px"><button class="circle lg press theme-toggle" data-act="theme" aria-label="Switch light or dark theme">${I.moon}${I.sun}</button><button class="circle lg press" data-act="edit-name" aria-label="Your name: ${esc(myName() || 'not set')}">${I.pen}</button></div>`)}
+        ${header(`<div class="row" style="gap:10px"><button class="circle lg press theme-toggle" data-act="theme" aria-label="Switch light or dark theme">${I.moon}${I.sun}</button><button class="circle lg press bell ${notifOn() ? 'on' : ''}" data-act="notif" aria-label="${notifOn() ? 'Notifications are on' : 'Turn on notifications'}">${notifOn() ? I.bell : I.bellOff}</button><button class="circle lg press" data-act="edit-name" aria-label="Your name: ${esc(myName() || 'not set')}">${I.pen}</button></div>`)}
         <div class="home-grid"><div class="home-main">
         <div class="stack" style="gap:8px">
           <h1 id="h-home">What are we beaming today?</h1>
@@ -672,6 +674,12 @@
         <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn sm lg dark press" data-act="share">${I.share} Share</button><span class="tiny muted" data-countdown="${r.expiresAt}" data-short="1"></span></div></div>
       </div>` : ''}
       ${ended ? `<div class="banner lg" style="margin-top:12px">${I.lock}<span>This ${duo ? 'chat' : 'room'} has ended. You can still save what was shared.</span></div>` : ''}
+      ${!ended && notifNudge() ? `<div class="card row notif-nudge enter" style="margin-top:12px;gap:12px">
+        <span class="mini-btn lg dark" style="width:40px;height:40px;flex-shrink:0">${I.bell}</span>
+        <span class="grow small" style="min-width:0"><b>Pop-ups for messages & calls</b><br><span class="muted">${notifState() === 'ios-install' ? 'On iPhone, add beam to your Home Screen first.' : 'Even when beam is closed.'}</span></span>
+        <button class="btn sm lg dark press" data-act="notif">Turn on</button>
+        <button class="circle press" style="width:34px;height:34px;border:none;background:transparent;color:var(--muted)" data-act="notif-later" aria-label="Not now">${I.close}</button>
+      </div>` : ''}
       <div class="feed" id="feed" aria-live="polite">${feedHtml(r)}</div>
     </section>`;
   }
@@ -1110,6 +1118,7 @@
   const C = { joined: false, video: false, local: null, peers: new Map(), muted: false, camOff: false, ice: null, min: false, started: 0, actx: null, levels: new Map(), raf: null, built: false, clock: null };
 
   async function startCall(video) {
+    stopRing();
     if (C.joined) { C.min = false; renderCall(); return; }
     if (!navigator.mediaDevices || !window.RTCPeerConnection) { toast('Calls aren\'t supported in this browser.', true); return; }
     const call = S.room.call;
@@ -1127,6 +1136,7 @@
     C.joined = true; C.video = video; C.muted = false; C.camOff = !video; C.min = false; C.started = Date.now();
     try { C.actx = new (window.AudioContext || window.webkitAudioContext)(); } catch { C.actx = null; }
     watchLevel(meId(), C.local);
+    if (!(S.ws && S.ws.readyState === 1)) await wsReady(8000);
     wsSend({ t: 'call-join', video, muted: false });
     keepAwake(true);
     if (navigator.vibrate) navigator.vibrate([10, 30, 10]);
@@ -1237,9 +1247,11 @@
       }
       syncPeers();
       if (msg.joined && msg.joined !== me) { const m = memberById(msg.joined); toast(`${m ? (m.name || m.device) : 'Someone'} joined the call`); }
-    } else if (!before && msg.call && msg.joined && msg.joined !== me && S.screen !== 'room') {
-      toast('A call started in your room', true);
+    } else if (!before && msg.call && msg.joined && msg.joined !== me) {
+      const m = memberById(msg.joined);
+      ring(S.session.code, { video: msg.call.video, from: who(m), where: S.room.type === 'team' ? roomLabel(S.session, S.room) : '', callId: msg.call.id });
     }
+    if (!msg.call || (msg.call && msg.call.participants.some((p) => p.id === me))) stopRing(S.session.code);
     renderCall();
     if (isChatRoom()) render();
   }
@@ -1411,7 +1423,7 @@
   // quietly so new messages, files and calls still show up.
   const isLive = (r) => !!r && (r.status === 'waiting' || r.status === 'active');
   function saveSessions() {
-    store.sset('beam_sessions', S.sessions);
+    store.set('beam_sessions', S.sessions);
     store.sset('beam_session', S.session);
   }
   function setSession(sess) {
@@ -1419,6 +1431,7 @@
     S.sessions[sess.code] = { ...sess, at: (S.sessions[sess.code] || {}).at || Date.now() };
     S.session = sess;
     saveSessions();
+    registerPush(sess);
   }
   function forget(code) {
     stopWatch(code);
@@ -1532,6 +1545,7 @@
     S.room = c.room || null;
     S.seen = new Set(S.room ? S.room.files.map((f) => f.id) : []);
     S.progress = {}; S.typing = {}; S.replyTo = null; S.draft = ''; S.stick = true; S.pendingFly = [];
+    clearNotifs(code);
     go('room');
     // Connect straight away; the snapshot below fills in anything missed.
     if (!S.room || isLive(S.room)) connect();
@@ -1564,10 +1578,12 @@
     const open = () => {
       if (S.watch[code] !== w) return;
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const ws = new WebSocket(`${proto}://${location.host}/api/rooms/${code}/ws?token=${encodeURIComponent(sess.token)}`);
+      const ws = new WebSocket(`${proto}://${location.host}/api/rooms/${code}/ws?token=${encodeURIComponent(sess.token)}${document.visibilityState === 'hidden' ? '&hidden=1' : ''}`);
       w.ws = ws;
+      w.heard = Date.now();
+      ws.addEventListener('message', () => { w.heard = Date.now(); });
       let ping;
-      ws.onopen = () => { w.tries = 0; ping = setInterval(() => ws.readyState === 1 && ws.send('ping'), 25000); };
+      ws.onopen = () => { w.tries = 0; ws.send(JSON.stringify({ t: 'vis', hidden: document.visibilityState === 'hidden' })); ping = setInterval(() => ws.readyState === 1 && ws.send('ping'), 25000); };
       ws.onmessage = (e) => {
         if (e.data === 'pong' || S.watch[code] !== w) return;
         let msg; try { msg = JSON.parse(e.data); } catch { return; }
@@ -1594,7 +1610,11 @@
         } else if (msg.t === 'call') {
           const before = c.room && c.room.call;
           if (c.room) c.room.call = msg.call;
-          if (!before && msg.call && msg.joined && msg.joined !== sess.memberId) toast(`${msg.call.video ? 'Video' : 'Voice'} call started in ${label()}`, true);
+          if (!before && msg.call && msg.joined && msg.joined !== sess.memberId) {
+            const m = c.room && c.room.members.find((x) => x.id === msg.joined);
+            ring(code, { video: msg.call.video, from: who(m), where: sess.type === 'chat' ? '' : label(), callId: msg.call.id });
+          }
+          if (!msg.call || msg.call.participants.some((p) => p.id === sess.memberId)) stopRing(code);
           refreshRooms();
         } else if (msg.t === 'ended') {
           if (msg.state) c.room = msg.state; else if (c.room) c.room.status = 'ended';
@@ -1628,6 +1648,234 @@
     };
     open();
   }
+
+  // ---------- notifications (pop-ups even when beam is closed) ----------
+  const P = { reg: null, sub: null, supported: 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window };
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  function unb64u(str) {
+    const s = atob(String(str).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((str.length + 3) % 4));
+    return Uint8Array.from(s, (c) => c.charCodeAt(0));
+  }
+  // 'granted' | 'default' | 'denied' | 'ios-install' | 'unsupported'
+  function notifState() {
+    if (!P.supported) return isIOS && !standalone() ? 'ios-install' : 'unsupported';
+    return Notification.permission;
+  }
+  const notifOn = () => notifState() === 'granted' && !!P.sub && !store.get('beam_notif_off', false);
+  function notifNudge() {
+    const st = notifState();
+    if (st !== 'default' && st !== 'ios-install' && !(st === 'granted' && !notifOn() && !store.get('beam_notif_off', false))) return false;
+    return Date.now() - store.get('beam_notif_later', 0) > 3 * 24 * 3600 * 1000;
+  }
+
+  async function swInit() {
+    if (!('serviceWorker' in navigator)) return;
+    try { P.reg = await navigator.serviceWorker.register('/sw.js'); } catch { return; }
+    navigator.serviceWorker.addEventListener('message', (e) => onSwMessage(e.data || {}));
+    if (P.supported && Notification.permission === 'granted' && !store.get('beam_notif_off', false)) {
+      try { await subscribePush(); registerAll(); } catch { /* push service unavailable */ }
+      refreshRooms();
+      if (isChatRoom()) render();
+    }
+  }
+  async function subscribePush() {
+    const reg = P.reg || await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      const { key } = await api('/api/push/key', { auth: false });
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: unb64u(key) });
+    }
+    P.sub = sub;
+    return sub;
+  }
+  async function registerPush(sess, force) {
+    if (!P.sub || !sess || store.get('beam_notif_off', false)) return;
+    const done = store.get('beam_pushed', {});
+    const k = `${sess.code}:${sess.memberId}`;
+    if (!force && done[k] === P.sub.endpoint) return;
+    try {
+      await api(`/api/rooms/${sess.code}/push`, { method: 'POST', sess, body: { sub: P.sub.toJSON() } });
+      done[k] = P.sub.endpoint;
+      store.set('beam_pushed', Object.fromEntries(Object.entries(done).slice(-100)));
+    } catch { /* room gone */ }
+  }
+  function registerAll(force) { return Promise.all(Object.values(S.sessions).map((x) => registerPush(x, force))); }
+
+  async function enableNotifications() {
+    const st = notifState();
+    if (st === 'ios-install') {
+      sheet(`<h2>Add beam to your Home Screen</h2>
+        <p class="muted">On iPhone and iPad, pop-ups work once beam is installed:</p>
+        <ol class="steps"><li>Tap <b>Share</b> at the bottom of Safari</li><li>Choose <b>Add to Home Screen</b></li><li>Open beam from your Home Screen and tap the bell</li></ol>
+        <div class="row" style="justify-content:flex-end"><button class="btn sm lg dark press" value="ok">Got it</button></div>`, () => {});
+      return;
+    }
+    if (st === 'unsupported') { toast('This browser can\'t show notifications.', true); return; }
+    if (st === 'denied') {
+      sheet(`<h2>Notifications are blocked</h2>
+        <p class="muted">Your browser is blocking pop-ups from beam. Open the site settings (the icon next to the web address, or Settings → Notifications on your phone), allow notifications for beam, then come back and tap the bell.</p>
+        <div class="row" style="justify-content:flex-end"><button class="btn sm lg dark press" value="ok">OK</button></div>`, () => {});
+      return;
+    }
+    const perm = st === 'granted' ? 'granted' : await Notification.requestPermission();
+    if (perm !== 'granted') { render(); return; }
+    try {
+      store.set('beam_notif_off', false);
+      await subscribePush();
+      await registerAll(true);
+      toast('Notifications on 🔔');
+      if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
+    } catch (e) {
+      toast(`Couldn't turn on notifications: ${e.message}`, true);
+    }
+    render();
+  }
+  async function disableNotifications() {
+    store.set('beam_notif_off', true);
+    try { if (P.sub) await P.sub.unsubscribe(); } catch { /* ignore */ }
+    P.sub = null;
+    store.set('beam_pushed', {});
+    toast('Notifications off');
+    render();
+  }
+  function notifSheet() {
+    sheet(`<h2>Notifications are on 🔔</h2>
+      <p class="muted">You'll get a pop-up for new messages and files, and your phone rings for calls, even when beam is closed. If beam is open on screen, you won't get a double alert.</p>
+      <div class="row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn sm lg press" data-act="notif-test">Send a test</button>
+        <button type="button" class="btn sm lg press" data-act="notif-off">Turn off</button>
+        <button class="btn sm lg dark press" value="ok">Done</button>
+      </div>`, () => {});
+  }
+  function clearNotifs(code) {
+    if (!P.reg || !P.reg.getNotifications) return;
+    P.reg.getNotifications().then((list) => list.forEach((n) => { if (!code || (n.data && n.data.code === code)) n.close(); })).catch(() => {});
+  }
+
+  function onSwMessage(d) {
+    if (d.t === 'open') afterOpen(d.code, d.answer);
+    else if (d.t === 'push' && d.data && d.data.kind === 'call' && S.sessions[d.data.code]) {
+      ring(d.data.code, { video: !!d.data.video, from: d.data.from || 'Someone', where: d.data.where || '', callId: d.data.callId });
+    } else if (d.t === 'push' && d.data && d.data.kind === 'missed') stopRing(d.data.code);
+  }
+  async function afterOpen(code, answer) {
+    code = String(code || '').toUpperCase();
+    if (!S.sessions[code]) { toast('That chat is no longer on this device.', true); return; }
+    if (!S.session || S.session.code !== code || S.screen !== 'room') await switchTo(code);
+    for (let i = 0; i < 50 && !(S.room && S.session && S.session.code === code); i++) await sleep(100);
+    if (!S.room) return;
+    if (answer === 'voice' || answer === 'video') startCall(answer === 'video');
+    else if (answer === 'ring' && S.room.call && !C.joined) {
+      const first = S.room.call.participants[0];
+      ring(code, { video: S.room.call.video, from: who(first && memberById(first.id)), where: S.room.type === 'team' ? roomLabel(S.session, S.room) : '', callId: S.room.call.id });
+    }
+  }
+
+  // ---------- incoming call: ring in the app ----------
+  const R = { code: null, info: null, timer: null, loop: null, actx: null, declined: new Set() };
+  function ring(code, info) {
+    if (C.joined || R.code === code || (info.callId && R.declined.has(info.callId))) return;
+    stopRing();
+    R.code = code; R.info = info;
+    let el = $('#ring');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'ring';
+      el.setAttribute('role', 'alertdialog');
+      el.setAttribute('aria-label', 'Incoming call');
+      document.body.appendChild(el);
+    }
+    el.innerHTML = `<div class="ring-card lg">
+      <span class="ring-av" style="background:${tint(code)}">${esc(initial(info.from))}</span>
+      <div class="grow" style="min-width:0"><b>${esc(info.from)}</b><div class="small">${info.video ? 'Video' : 'Voice'} call${info.where ? ` · ${esc(info.where)}` : ''}</div></div>
+      <button class="circle lg press ring-no" data-act="ring-decline" aria-label="Decline">${I.phone}</button>
+      <button class="circle lg press ring-yes" data-act="ring-answer" aria-label="Answer">${info.video ? I.video : I.phone}</button>
+    </div>`;
+    el.hidden = false;
+    requestAnimationFrame(() => el.classList.add('in'));
+    playRing();
+    R.timer = setTimeout(() => stopRing(), 40000);
+  }
+  function stopRing(code) {
+    if (!R.code || (code && R.code !== code)) return;
+    R.code = null;
+    clearTimeout(R.timer);
+    clearInterval(R.loop); R.loop = null;
+    if (navigator.vibrate) navigator.vibrate(0);
+    const el = $('#ring');
+    if (el) { el.classList.remove('in'); setTimeout(() => { if (!R.code) el.hidden = true; }, 260); }
+  }
+  async function answerRing() {
+    const code = R.code; const info = R.info || {};
+    stopRing();
+    if (!code) return;
+    if (!S.session || S.session.code !== code || S.screen !== 'room') await switchTo(code);
+    for (let i = 0; i < 50 && !(S.room && S.session && S.session.code === code); i++) await sleep(100);
+    clearNotifs(code);
+    if (S.room) startCall(!!info.video);
+  }
+  function playRing() {
+    try { R.actx = R.actx || new (window.AudioContext || window.webkitAudioContext)(); if (R.actx.state === 'suspended') R.actx.resume(); } catch { R.actx = null; }
+    const beat = () => {
+      if (navigator.vibrate) navigator.vibrate([450, 200, 450]);
+      const a = R.actx;
+      if (!a) return;
+      const t0 = a.currentTime + 0.02;
+      // A soft rising chime, twice.
+      [[659.25, 0], [830.61, 0.16], [987.77, 0.32], [659.25, 0.9], [830.61, 1.06], [987.77, 1.22]].forEach(([f, d]) => {
+        const o = a.createOscillator(); const g = a.createGain();
+        o.type = 'sine'; o.frequency.value = f;
+        const t = t0 + d;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.22, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+        o.connect(g).connect(a.destination);
+        o.start(t); o.stop(t + 0.65);
+      });
+    };
+    beat();
+    R.loop = setInterval(beat, 2600);
+  }
+
+  // ---------- staying live without refreshing ----------
+  // Phones pause pages in the background and networks drop. Whenever beam comes
+  // back on screen (or every 15 seconds while it's open), check every room's live
+  // connection, reconnect anything that went quiet, and catch up on what was missed.
+  function sendVis() {
+    const m = JSON.stringify({ t: 'vis', hidden: document.visibilityState === 'hidden' });
+    if (S.ws && S.ws.readyState === 1) S.ws.send(m);
+    Object.values(S.watch).forEach((w) => { if (w.ws && w.ws.readyState === 1) w.ws.send(m); });
+  }
+  function heal(full) {
+    if (S.session && !(S.room && !isLive(S.room))) {
+      const stale = S.ws && S.ws.readyState === 1 && Date.now() - (S.lastHeard || 0) > 70000;
+      if (stale) { try { S.ws.close(); } catch { /* ignore */ } }
+      if (!S.ws || S.ws.readyState > 1 || stale) { clearTimeout(S.wsTimer); S.wsTries = 0; connect(); }
+      if (full) {
+        const code = S.session.code;
+        api(`/api/rooms/${code}`).then((snap) => { if (S.session && S.session.code === code) onState(snap.state); }).catch(() => {});
+      }
+    }
+    for (const x of Object.values(S.sessions)) {
+      if ((S.session && x.code === S.session.code) || (x.type !== 'team' && x.type !== 'chat')) continue;
+      const c = S.cache[x.code];
+      if (c && c.room && !isLive(c.room)) continue;
+      const w = S.watch[x.code];
+      const dead = !w || !w.ws || w.ws.readyState > 1 || (w.ws.readyState === 1 && Date.now() - (w.heard || 0) > 70000);
+      if (dead) { stopWatch(x.code); watch(x.code); }
+    }
+  }
+  document.addEventListener('visibilitychange', () => {
+    sendVis();
+    if (document.visibilityState === 'visible') {
+      heal(true);
+      if (S.session && S.screen === 'room') clearNotifs(S.session.code);
+    }
+  });
+  window.addEventListener('online', () => heal(true));
+  window.addEventListener('pageshow', (e) => { if (e.persisted) heal(true); });
+  setInterval(() => { if (document.visibilityState === 'visible') heal(false); }, 15000);
 
   // After a reload: check the rooms in the background are still there.
   async function restoreRooms() {
@@ -1677,11 +1925,14 @@
     const s = S.session;
     if (!s) return;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${proto}://${location.host}/api/rooms/${s.code}/ws?token=${encodeURIComponent(s.token)}`);
+    const ws = new WebSocket(`${proto}://${location.host}/api/rooms/${s.code}/ws?token=${encodeURIComponent(s.token)}${document.visibilityState === 'hidden' ? '&hidden=1' : ''}`);
     S.ws = ws;
+    S.lastHeard = Date.now();
     let ping;
+    ws.addEventListener('message', () => { S.lastHeard = Date.now(); });
     ws.onopen = () => {
       S.wsTries = 0;
+      sendVis();
       ping = setInterval(() => ws.readyState === 1 && ws.send('ping'), 25000);
       if (C.joined) { for (const id of [...C.peers.keys()]) closePeer(id); ws.send(JSON.stringify({ t: 'call-join', video: C.video, muted: C.muted })); }
     };
@@ -2207,6 +2458,17 @@
     'add-files': async () => sendFiles(await pickFiles(), S.session ? S.session.type : 'single'),
     resume: () => go('room'),
     rooms: () => go('team'),
+    notif: () => (notifOn() ? notifSheet() : enableNotifications()),
+    'notif-later': () => { store.set('beam_notif_later', Date.now()); render(); },
+    'notif-off': async () => { await disableNotifications(); },
+    'notif-test': async () => {
+      try {
+        const reg = P.reg || await navigator.serviceWorker.ready;
+        await reg.showNotification('beam', { body: 'Notifications are working 🎉', icon: '/icons/icon-192.png', badge: '/icons/badge-96.png', tag: 'beam-test' });
+      } catch (e) { toast(e.message, true); }
+    },
+    'ring-answer': () => answerRing(),
+    'ring-decline': () => stopRing(),
     'open-room': (el) => switchTo(el.dataset.code),
     'forget-room': (el) => { const c = el.dataset.code; if (S.session && S.session.code === c) { disconnect(); S.room = null; } forget(c); render(); },
     'chat-create': () => askName('Start a private chat', async () => {
@@ -2437,7 +2699,16 @@
   // ---------- start ----------
   async function boot() {
     api('/api/config', { auth: false }).then((c) => { S.cfg = { ...S.cfg, ...c }; }).catch(() => {});
+    // Opened from a notification: show that chat.
+    const opened = /#open=([A-Za-z0-9]{4,5})(?:&answer=(voice|video|ring))?/.exec(location.hash);
+    if (opened) {
+      history.replaceState(null, '', location.pathname);
+      const sess = S.sessions[opened[1].toUpperCase()];
+      if (sess) { if (S.session && S.session.code !== sess.code && S.session.type === 'single') delete S.sessions[S.session.code]; S.session = sess; saveSessions(); }
+    }
     restoreRooms();
+    swInit();
+    if (opened && S.session && opened[2]) setTimeout(() => afterOpen(S.session.code, opened[2]), 900);
     const hash = /#j=([A-Za-z0-9]{4,5})-([a-z0-9]+)/.exec(location.hash);
     if (hash) history.replaceState(null, '', location.pathname);
     if (hash) {
@@ -2470,6 +2741,8 @@
 
   // An invite link opened while beam is already open.
   window.addEventListener('hashchange', async () => {
+    const o = /#open=([A-Za-z0-9]{4,5})(?:&answer=(voice|video|ring))?/.exec(location.hash);
+    if (o) { history.replaceState(null, '', location.pathname); afterOpen(o[1], o[2]); return; }
     const m = /#j=([A-Za-z0-9]{4,5})-([a-z0-9]+)/.exec(location.hash);
     if (!m) return;
     history.replaceState(null, '', location.pathname);

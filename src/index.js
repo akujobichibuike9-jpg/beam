@@ -18,6 +18,7 @@
 import { Room } from './room.js';
 import { Limiter } from './limiter.js';
 import { handleAdmin, cleanup } from './admin.js';
+import { vapid } from './push.js';
 import {
   json, err, randomCode, ipHash, place, settings, cleanText, cleanFileName, contentDisposition, serveObject, PART_SIZE
 } from './util.js';
@@ -29,6 +30,7 @@ const ERRORS = {
   not_found: [404, "That code isn't active. Check it and try again."],
   full: [409, 'This room is full.'],
   forbidden: [403, "You're not in this room."],
+  bad_sub: [400, 'This browser gave an unusable notification address.'],
   cannot_send: [403, 'The host has turned sending off for you.'],
   too_big: [413, 'That file is over the size limit.'],
   too_many_files: [409, 'This room has too many files.'],
@@ -74,6 +76,12 @@ async function handleApi(request, env, ctx, url) {
   if (path === '/api/config' && method === 'GET') {
     const cfg = settings(env);
     return json({ retentionDays: cfg.retentionDays, maxFileMb: cfg.maxFileMb, maxTeam: cfg.maxTeam, codeTtlMin: cfg.codeTtlMin, partSize: PART_SIZE });
+  }
+
+  // Public key browsers need to sign up for notifications.
+  if (path === '/api/push/key' && method === 'GET') {
+    const { pub } = await vapid(env);
+    return json({ key: pub });
   }
 
   // ----- create a room -----
@@ -194,6 +202,12 @@ async function handleApi(request, env, ctx, url) {
   if (mm && method === 'POST') {
     const b = await body(request);
     return fromRoom(await stub.setMember({ token, memberId: mm[1], canSend: !!b.canSend }));
+  }
+
+  // Turn pop-up notifications for this room on or off for this device.
+  if (rest === '/push' && method === 'POST') {
+    const b = await body(request);
+    return fromRoom(await stub.pushSub({ token, sub: b.sub, off: !!b.off, origin: url.origin }));
   }
 
   if (rest === '/end' && method === 'POST') return fromRoom(await stub.end({ token }));

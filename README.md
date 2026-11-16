@@ -87,6 +87,23 @@ The admin API already needs `ADMIN_TOKEN`. For a second lock, put
 Access → Applications → Self-hosted). Only the email addresses you list can
 then reach them.
 
+## Notifications and installing as an app
+
+beam can be installed (Chrome: install icon in the address bar; Android: "Install
+app"; iPhone: Share → Add to Home Screen). Tap the bell to turn on pop-ups:
+
+- new messages, voice notes and files show as a notification (one per chat,
+  with a count), only when beam isn't on screen, so there's no double alert
+- calls ring with Answer / Decline; if nobody picks up you get "Missed call"
+- tapping a notification opens that chat, even if beam was closed
+
+This uses standard Web Push (no cron, no extra service). The signing key
+(VAPID) is created automatically the first time and stored in D1 (`kv` table),
+so there's nothing to configure. iPhone/iPad need iOS 16.4+ and beam added to the
+Home Screen. While beam is open, every room's live connection checks itself every
+15 seconds and reconnects (and catches up) whenever the phone wakes or the
+network comes back, so you never need to refresh.
+
 ## Settings
 
 Change these in `wrangler.jsonc` under `vars`, then deploy again:

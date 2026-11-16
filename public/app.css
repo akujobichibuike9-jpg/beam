@@ -612,3 +612,26 @@ html.theme-anim, html.theme-anim * { transition: background-color .35s ease, col
 .nbadge { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: #2F8CF0; color: #fff; font: 700 11px/18px Inter, system-ui, sans-serif; font-style: normal; text-align: center; box-shadow: 0 0 0 2px var(--bg, #fff); }
 #rooms-back { position: relative; }
 #rooms-back[data-unread]:not([data-unread=""])::after { content: attr(data-unread); position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: #2F8CF0; color: #fff; font: 700 11px/18px Inter, system-ui, sans-serif; text-align: center; }
+
+/* ---------- incoming call ---------- */
+#ring { position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 12px); z-index: 80; display: flex; justify-content: center; pointer-events: none; transform: translateY(-140%); transition: transform .35s cubic-bezier(.3,1.4,.5,1); }
+#ring.in { transform: none; }
+#ring[hidden] { display: none; }
+.ring-card { pointer-events: auto; width: min(440px, calc(100% - 24px)); display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 14px; border-radius: 28px; background: rgba(14,17,22,.92); color: #fff; -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); box-shadow: 0 18px 50px rgba(14,17,22,.35); }
+.ring-card b { font-size: 16px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ring-card .small { color: rgba(255,255,255,.7); }
+.ring-av { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; color: #0E1116; font-weight: 700; font-size: 18px; flex-shrink: 0; animation: ringpulse 1.3s ease-out infinite; }
+.ring-card .circle { width: 52px; height: 52px; border: none; color: #fff; flex-shrink: 0; }
+.ring-card .ring-no { background: #E5484D; }
+.ring-card .ring-no svg { transform: rotate(135deg); }
+.ring-card .ring-yes { background: #30A46C; animation: wiggle 1.3s ease-in-out infinite; }
+@keyframes ringpulse { 0% { box-shadow: 0 0 0 0 rgba(156,203,245,.7); } 100% { box-shadow: 0 0 0 16px rgba(156,203,245,0); } }
+@keyframes wiggle { 0%, 60%, 100% { transform: rotate(0); } 10%, 30%, 50% { transform: rotate(-12deg); } 20%, 40% { transform: rotate(12deg); } }
+@media (prefers-reduced-motion: reduce) { #ring { transition: none; } .ring-av, .ring-card .ring-yes { animation: none; } }
+
+/* notifications */
+.bell.on { color: var(--primary); }
+.notif-nudge { align-items: center; }
+.steps { margin: 4px 0 14px; padding-left: 20px; line-height: 1.8; }
+.notif-nudge .btn { white-space: nowrap; flex-shrink: 0; }
+.notif-nudge { padding-right: 8px; }

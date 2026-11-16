@@ -4,6 +4,7 @@
 
 import { DurableObject } from 'cloudflare:workers';
 import { rid, PART_SIZE } from './util.js';
+import { sendPush, validSub } from './push.js';
 
 const HOUR = 3600 * 1000;
 const SINGLE_ACTIVE_MS = 2 * HOUR;   // a 1-to-1 room stays open 2h after someone joins
@@ -38,6 +39,62 @@ export class Room extends DurableObject {
   }
   online(id) {
     return this.ctx.getWebSockets(id).length > 0;
+  }
+  // Is beam open and on screen for this person right now (any of their devices)?
+  watching(id) {
+    return this.ctx.getWebSockets(id).some((ws) => { try { return !(ws.deserializeAttachment() || {}).hidden; } catch (e) { return true; } });
+  }
+  label(m) { return (m && (m.name || m.device)) || 'Someone'; }
+  roomTitle() {
+    if (this.s.type === 'chat') return null;
+    const host = Object.values(this.s.members).find((m) => m.role === 'host');
+    return `${host && host.name ? host.name : 'Team'}'s room`;
+  }
+
+  // ---------- notifications ----------
+  async pushSub({ token, sub, off, origin }) {
+    await this.load();
+    const me = this.member(token);
+    if (!me) return { error: 'forbidden' };
+    const clean = validSub(sub, this.env);
+    if (!clean) return { error: 'bad_sub' };
+    const list = (me.push || []).filter((x) => x.endpoint !== clean.endpoint);
+    if (!off) list.push(clean);
+    me.push = list.slice(-3);
+    if (origin && /^https?:\/\/[^/]+$/.test(origin)) this.s.origin = origin;
+    await this.save();
+    return { ok: true };
+  }
+
+  // Send a pop-up to everyone (except `fromId`) who isn't looking at beam.
+  notify(fromId, data, opts = {}, only) {
+    const s = this.s;
+    if (!s || s.type === 'single') return [];
+    const targets = Object.values(s.members).filter((m) => m.id !== fromId && !m.removed && (m.push || []).length
+      && (!only || only.includes(m.id)) && (opts.always || !this.watching(m.id)));
+    if (!targets.length) return [];
+    const contact = s.origin && s.origin.startsWith('https://') ? s.origin : 'mailto:noreply@beam.invalid';
+    const payload = { ...data, code: s.code, at: Date.now() };
+    const work = (async () => {
+      let changed = false;
+      await Promise.all(targets.flatMap((m) => m.push.map(async (sub) => {
+        const r = await sendPush(this.env, sub, payload, { ...opts, contact, topic: opts.topic || `r${s.code}` });
+        if (r === 'gone') { m.push = m.push.filter((x) => x.endpoint !== sub.endpoint); changed = true; }
+      })));
+      if (changed) await this.save();
+    })();
+    this.ctx.waitUntil(work);
+    return targets.map((m) => m.id);
+  }
+  fileLine(f) {
+    if (f.voice) return '🎤 Voice note';
+    if (/^image\//.test(f.type || '')) return '📷 Photo';
+    if (/^video\//.test(f.type || '')) return '🎥 Video';
+    return `📎 ${f.name}`;
+  }
+  notifyItem(me, body) {
+    const room = this.roomTitle();
+    this.notify(me.id, { kind: 'msg', title: room ? `${this.label(me)} · ${room}` : this.label(me), body, tag: `beam-${this.s.code}` });
   }
   publicState() {
     const s = this.s;
@@ -357,6 +414,7 @@ export class Room extends DurableObject {
     await this.save();
     await this.db('UPDATE files SET status = ?, upload_id = NULL WHERE id = ?', 'ready', f.id);
     this.pushState();
+    this.notifyItem(me, this.fileLine(f));
     return { ok: true };
   }
 
@@ -427,6 +485,7 @@ export class Room extends DurableObject {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server, [me.id]);
+    server.serializeAttachment({ hidden: url.searchParams.get('hidden') === '1' });
     server.send(JSON.stringify({ t: 'state', state: this.publicState(), memberId: me.id }));
     this.pushState();
     return new Response(null, { status: 101, webSocket: client });
@@ -443,6 +502,7 @@ export class Room extends DurableObject {
     if (!m || typeof m !== 'object') return;
     const live = this.live();
     switch (m.t) {
+      case 'vis': ws.serializeAttachment({ hidden: !!m.hidden }); return undefined;
       case 'chat': return live && this.chat(me, m);
       case 'react': return this.react(me, m);
       case 'typing': return live && this.broadcastExcept(me.id, { t: 'typing', from: me.id });
@@ -483,6 +543,7 @@ export class Room extends DurableObject {
     if (msgs.length > MAX_MESSAGES) msgs.splice(0, msgs.length - MAX_MESSAGES);
     await this.save();
     this.broadcast({ t: 'msg', msg });
+    this.notifyItem(me, text.length > 140 ? `${text.slice(0, 140)}…` : text);
     await this.db('INSERT INTO messages (id, room_id, member_id, text, reply_to, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       msg.id, this.s.roomId, me.id, text, replyTo, now);
   }
@@ -559,10 +620,24 @@ export class Room extends DurableObject {
       return;
     }
     s.call.participants[me.id] = { id: me.id, video: !!m.video, muted: !!m.muted, camOff: !m.video, joinedAt: now };
+    s.call.joinedEver = [...new Set([...(s.call.joinedEver || []), me.id])];
     if (m.video && !s.call.video) s.call.video = true;
     s.call.peak = Math.max(s.call.peak, Object.keys(s.call.participants).length);
+    const isNew = !s.call.rang;
+    if (isNew) s.call.rang = [];
     await this.save();
     this.broadcast({ t: 'call', call: this.publicCall(), joined: me.id });
+    if (isNew) {
+      // Ring everyone who isn't looking at beam.
+      const room = this.roomTitle();
+      s.call.rang = this.notify(me.id, {
+        kind: 'call', video: !!s.call.video, callId: s.call.id, from: this.label(me), where: room || '',
+        title: `${this.label(me)} is calling`,
+        body: `${s.call.video ? 'Video' : 'Voice'} call${room ? ` · ${room}` : ''}`,
+        tag: `call-${s.code}`
+      }, { urgency: 'high', ttl: 45, topic: `c${s.code}` });
+      await this.save();
+    }
   }
 
   async callLeave(memberId) {
@@ -582,6 +657,13 @@ export class Room extends DurableObject {
     if (!c) return;
     this.s.call = null;
     await this.save();
+    // Anyone we rang who never picked up gets a "missed call" in place of the ringing one.
+    const missed = (c.rang || []).filter((id) => !c.joinedEver || !c.joinedEver.includes(id));
+    if (missed.length) {
+      const from = this.s.members[c.startedBy];
+      this.notify(null, { kind: 'missed', title: `Missed ${c.video ? 'video' : 'voice'} call`, body: `From ${this.label(from)}${this.roomTitle() ? ` · ${this.roomTitle()}` : ''}`, tag: `call-${this.s.code}` },
+        { always: true, topic: `c${this.s.code}` }, missed);
+    }
     await this.db('UPDATE calls SET ended_at = ?, peak = ?, video = ? WHERE id = ?', Date.now(), c.peak || 1, c.video ? 1 : 0, c.id);
     this.broadcast({ t: 'call', call: null });
   }
