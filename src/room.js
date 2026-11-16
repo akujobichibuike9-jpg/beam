@@ -13,7 +13,6 @@ const MAX_FILES = 300;
 const MAX_THUMB = 40000;             // characters of the small preview image (data URL)
 const MAX_MESSAGES = 300;            // kept live in the room (all are in D1 for admins)
 const MAX_TEXT = 2000;
-const MAX_NOTE = 20000;             // pasted text / links ("notes")
 const MAX_CALL = 8;                  // people in one call (everyone connects to everyone)
 const EMOJI = ['👍', '❤️', '😂', '😮', '🔥', '👀'];
 
@@ -529,11 +528,7 @@ export class Room extends DurableObject {
 
   // ---------- chat ----------
   async chat(me, m) {
-    const note = !!m.note;
-    const raw = String(m.text || '').replace(/\u0000/g, '');
-    // Notes keep their exact text (spaces, line breaks) so they paste back the same.
-    const text = note ? raw.slice(0, MAX_NOTE) : raw.trim().slice(0, MAX_TEXT);
-    if (note && !text.trim()) return;
+    const text = String(m.text || '').replace(/\u0000/g, '').trim().slice(0, MAX_TEXT);
     if (!text) return;
     // Simple flood control: at most 8 messages per 10 seconds each.
     const now = Date.now();
@@ -544,16 +539,11 @@ export class Room extends DurableObject {
     const msgs = this.s.messages || (this.s.messages = []);
     const replyTo = typeof m.replyTo === 'string' && (msgs.some((x) => x.id === m.replyTo) || this.s.files[m.replyTo]) ? m.replyTo : null;
     const msg = { id: rid(12), from: me.id, text, replyTo, at: now, nonce: typeof m.nonce === 'string' ? m.nonce.slice(0, 20) : undefined };
-    if (note) msg.note = true;
     msgs.push(msg);
     if (msgs.length > MAX_MESSAGES) msgs.splice(0, msgs.length - MAX_MESSAGES);
-    // Keep the room's saved state well under Cloudflare's 2 MB per value.
-    let chars = msgs.reduce((n, x) => n + x.text.length, 0);
-    while (chars > 600000 && msgs.length > 1) chars -= msgs.shift().text.length;
     await this.save();
     this.broadcast({ t: 'msg', msg });
-    const preview = text.trim().replace(/\s+/g, ' ');
-    this.notifyItem(me, `${note ? '📋 ' : ''}${preview.length > 140 ? `${preview.slice(0, 140)}…` : preview}`);
+    this.notifyItem(me, text.length > 140 ? `${text.slice(0, 140)}…` : text);
     await this.db('INSERT INTO messages (id, room_id, member_id, text, reply_to, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       msg.id, this.s.roomId, me.id, text, replyTo, now);
   }

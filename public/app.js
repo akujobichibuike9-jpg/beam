@@ -77,7 +77,6 @@
     bubble: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>`,
     bell: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>`,
     bellOff: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.6 3.9A6 6 0 0 1 18 9c0 3 .6 4.9 1.3 6M6 9c0 6-2.5 7.5-2.5 7.5H16"/><path d="M10 20a2 2 0 0 0 4 0M3 3l18 18"/></svg>`,
-    copy: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="3"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>`,
     pen: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>`
   };
 
@@ -303,11 +302,6 @@
             <span class="grow"><strong class="display" style="font-size:18px;display:block">Team room</strong><span class="small muted">Lots of people</span></span>
           </a>
         </div>
-        <button class="paste-tile lg press" data-act="note-new">
-          <span class="pt-art" aria-hidden="true"><span class="pt-board"><span class="pt-clip"></span></span><span class="pt-note"><i></i><i></i><i></i></span></span>
-          <span class="grow"><strong class="display" style="font-size:18px;display:block">Paste</strong><span class="small muted">Copy on one device, paste on the other</span></span>
-          <span class="kbd">${isMac ? '⌘' : 'Ctrl'} V</span>
-        </button>
         ${roomsHtml()}
         ${S.session && S.session.type === 'single' ? `<a href="#" class="card row press" data-act="resume" style="text-decoration:none;color:inherit"><span class="dot blue"></span><span class="grow"><b>Back to your ${S.session.type === 'team' ? 'team room' : S.session.type === 'chat' ? 'private chat' : 'transfer'}</b><br><span class="small muted">Code ${esc(S.session.code)}</span></span>${I.up(18)}</a>` : ''}
         </div><aside class="home-side stack">
@@ -440,11 +434,11 @@
       <div class="cols2"><div class="col">
       ${receiver ? `
         <div class="stack" style="gap:6px;align-items:center;text-align:center">
-          <h1 id="h-send">${!files.length ? `Connected to ${esc(receiver.device)}` : allUp ? 'Sent' : `Sending to ${esc(receiver.device)}`}</h1>
-          ${files.length ? `<p class="muted small" data-total>${fmtSize(totals.up)} of ${fmtSize(totals.size)} · ${files.length} file${files.length === 1 ? '' : 's'}</p>` : '<p class="muted small">Paste text or add files. They show up there straight away.</p>'}
+          <h1 id="h-send">${allUp ? 'Sent' : `Sending to ${esc(receiver.device)}`}</h1>
+          <p class="muted small" data-total>${fmtSize(totals.up)} of ${fmtSize(totals.size)} · ${files.length} file${files.length === 1 ? '' : 's'}</p>
         </div>
-        ${files.length ? `<div class="stage" id="stage" aria-hidden="true">${allUp ? `<div class="done-badge lg dark">${I.check(54)}</div>` : '<div class="ghost"></div>'}</div>
-        <div class="bar big" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Upload progress"><i data-total-bar style="width:${pct}%"></i></div>` : ''}
+        <div class="stage" id="stage" aria-hidden="true">${allUp ? `<div class="done-badge lg dark">${I.check(54)}</div>` : '<div class="ghost"></div>'}</div>
+        <div class="bar big" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Upload progress"><i data-total-bar style="width:${pct}%"></i></div>
         <div class="card connected">
           <span class="icon">${I.laptop}</span>
           <div class="grow"><b>${esc(receiver.device)}</b><div class="small muted">Connected with ${esc(s.code)} ${receiver.online ? '' : '· offline'}</div></div>
@@ -461,15 +455,13 @@
       `}
       </div><div class="col">
       ${S.uploading ? keepOpenNote() : ''}
-      ${notesHtml(r, s)}
-      ${files.length || !(r.messages || []).some((m) => m.note) ? `<div class="stack">
+      <div class="stack">
         <div class="row between"><b style="font-size:15px">Your files</b><span class="small muted">${files.length}</span></div>
         <div class="list" id="files">${files.map((f) => fileRow(f, r, s)).join('') || '<div class="empty">Uploading…</div>'}</div>
-      </div>` : ''}
+      </div>
       ${ended ? `<button class="btn block lg dark press" data-act="leave">Back home</button>` : `
       <div class="row">
-        <button class="btn grow lg press" data-act="add-files">Add files</button>
-        <button class="btn grow lg press" data-act="note-new">${I.copy} Paste</button>
+        <button class="btn grow lg press" data-act="add-files">Add more</button>
         <button class="btn grow lg dark press" data-act="end-room">Done</button>
       </div>`}
       <p class="notice">Files are kept on beam's servers for ${S.cfg.retentionDays} days, then deleted.</p>
@@ -481,8 +473,6 @@
     const host = r.members.find((m) => m.role === 'host');
     const files = r.files.filter((f) => f.status !== 'failed');
     const ready = files.filter((f) => f.status === 'ready');
-    const hasNotes = (r.messages || []).some((m) => m.note);
-    const live = r.status === 'waiting' || r.status === 'active';
     return `<section class="screen" aria-labelledby="h-recv2">
       <div class="row between">
         <a href="#" class="circle lg press" data-act="leave" aria-label="Leave">${I.close}</a>
@@ -490,155 +480,16 @@
       </div>
       <div class="stack" style="gap:6px">
         <p class="small muted">From ${esc(host ? host.device : 'sender')} · code ${esc(s.code)}</p>
-        <h1 id="h-recv2">${files.length ? (ready.length === files.length ? 'Here they are' : 'Incoming…') : (hasNotes ? 'Here it is' : 'Waiting for files…')}</h1>
+        <h1 id="h-recv2">${files.length ? (ready.length === files.length ? 'Here they are' : 'Incoming…') : 'Waiting for files…'}</h1>
       </div>
-      ${notesHtml(r, s)}
-      ${files.length || hasNotes ? '' : `<div class="stage" aria-hidden="true">
+      ${files.length ? '' : `<div class="stage" aria-hidden="true">
           <span style="position:absolute;left:50%;bottom:44px;margin-left:-37px;animation:drop 2.8s cubic-bezier(.3,.7,.3,1) infinite">${photoArt(74, 54)}</span>
           <span style="position:absolute;left:calc(50% - 90px);width:180px;bottom:20px;height:40px;border-radius:16px;background:rgba(214,233,252,.85);box-shadow:inset 0 1.5px 0 #fff,0 6px 12px rgba(40,90,150,.15)"></span>
         </div>`}
       <div class="list" id="files">${files.map((f) => fileRow(f, r, s)).join('')}</div>
       ${ready.length > 1 ? `<button class="btn block lg dark press" data-act="save-all">Save all ${ready.length}</button>` : ''}
-      ${live ? `<button class="btn block lg press" data-act="note-new">${I.copy} Paste something back</button>` : ''}
       <p class="notice">Files are kept on beam's servers for ${S.cfg.retentionDays} days, then deleted.</p>
     </section>`;
-  }
-
-  // ---------- Paste: sticky notes that fly between devices ----------
-  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-  const noteKind = (t) => {
-    const s = t.trim();
-    if (/^https?:\/\/\S+$/i.test(s)) return 'link';
-    if (s.length >= 4 && s.length <= 12 && /^[A-Z0-9][A-Z0-9 -]*$/i.test(s) && /\d/.test(s)) return 'code';
-    return 'text';
-  };
-  function noteBody(t) {
-    const kind = noteKind(t);
-    if (kind === 'link') {
-      let host = '';
-      try { host = new URL(t.trim()).hostname.replace(/^www\./, ''); } catch { /* not a URL */ }
-      return `<div class="nc-body link"><b>${esc(host)}</b><span>${esc(t.trim())}</span></div>`;
-    }
-    if (kind === 'code') return `<div class="nc-body code">${esc(t.trim())}</div>`;
-    const long = t.length > 420 || t.split('\n').length > 9;
-    return `<div class="nc-body text ${long ? 'clamp' : ''}">${linkify(esc(t))}</div>${long ? '<button class="nc-more" data-act="note-expand">Show all</button>' : ''}`;
-  }
-  function noteCard(m, r, s) {
-    const mine = m.from === s.memberId;
-    const who2 = r.members.find((x) => x.id === m.from);
-    const link = noteKind(m.text) === 'link' ? m.text.trim() : '';
-    return `<div class="note-card ${S.fresh.has(m.id) ? 'drop' : ''} ${mine ? 'mine' : ''}" data-key="${m.id}">
-      <div class="nc-head"><span class="nc-pin" aria-hidden="true"></span>${mine ? 'You' : esc(who2 ? who2.name || who2.device : 'Someone')} · ${timeOf(m.at)}</div>
-      ${noteBody(m.text)}
-      <div class="nc-actions">
-        <button class="btn sm lg dark press nc-copy" data-act="copy" data-id="${m.id}">${I.copy} Copy</button>
-        ${link ? `<a class="btn sm lg press" href="${esc(link)}" target="_blank" rel="noopener noreferrer">Open link</a>` : ''}
-      </div>
-    </div>`;
-  }
-  function notesHtml(r, s) {
-    const notes = (r.messages || []).filter((m) => m.note);
-    if (!notes.length) return '';
-    return `<div class="stack notes" style="gap:12px">${notes.slice().reverse().map((m) => noteCard(m, r, s)).join('')}</div>`;
-  }
-
-  function openNoteSheet(prefill = '') {
-    sheet(`
-      <h2>Paste something</h2>
-      <div class="sticky"><span class="sticky-tape" aria-hidden="true"></span>
-        <label class="sr" for="note-in">Text to send</label>
-        <textarea id="note-in" name="note" class="sticky-in" rows="7" maxlength="20000" placeholder="A link, an address, a code, notes…">${esc(prefill)}</textarea>
-      </div>
-      <div class="row" style="gap:8px;flex-wrap:wrap">
-        <button type="button" class="btn sm lg press" data-act="note-paste">${I.copy} Paste</button>
-        <span class="grow"></span>
-        <button class="btn sm lg press" value="cancel" formnovalidate>Cancel</button>
-        <button class="btn sm lg dark press" value="ok">Send</button>
-      </div>`, (d) => {
-      const text = d.note || '';
-      if (!text.trim()) { toast('Nothing to send yet', true); return false; }
-      flyNote($('#sheet .sticky'));
-      sendNote(text);
-      return true;
-    });
-    const ta = $('#note-in');
-    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
-  }
-  async function pasteIntoSheet() {
-    const ta = $('#note-in');
-    if (!ta) return;
-    try {
-      const t = await navigator.clipboard.readText();
-      if (!t) { toast('Your clipboard is empty', true); return; }
-      ta.value = t;
-      ta.classList.remove('wiggle'); void ta.offsetWidth; ta.classList.add('wiggle');
-      if (navigator.vibrate) navigator.vibrate(10);
-    } catch {
-      toast(isMac ? 'Tap and hold in the note, then Paste' : 'Press Ctrl+V in the note to paste', true);
-      ta.focus();
-    }
-  }
-
-  // The note folds into a paper plane and flies off.
-  function flyNote(from) {
-    if (reduceMotion || !from) return;
-    const r = from.getBoundingClientRect();
-    const el = document.createElement('div');
-    el.className = 'fly-note';
-    el.style.left = `${r.left}px`; el.style.top = `${r.top}px`;
-    el.style.width = `${r.width}px`; el.style.height = `${r.height}px`;
-    el.innerHTML = `<div class="fn-face"><i></i><i></i><i></i><i></i></div>
-      <svg class="fn-plane" viewBox="0 0 64 64" aria-hidden="true"><path d="M4 30 L60 6 L42 58 L30 38 Z" fill="#FFFFFF" stroke="#0E1116" stroke-width="3" stroke-linejoin="round"/><path d="M60 6 L30 38 L26 52 L22 36" fill="#CDE4FA" stroke="#0E1116" stroke-width="3" stroke-linejoin="round"/></svg>`;
-    document.body.appendChild(el);
-    const tx = innerWidth - r.left + 80; const ty = -r.top - 160;
-    el.animate([
-      { transform: 'translate(0,0) scale(1) rotate(0)', borderRadius: '18px' },
-      { transform: 'translate(0,10px) scale(.62, .5) rotate(-4deg)', borderRadius: '30px', offset: 0.28 },
-      { transform: `translate(${tx * 0.25}px, ${ty * 0.05 + 30}px) scale(.32) rotate(-14deg)`, offset: 0.5 },
-      { transform: `translate(${tx}px, ${ty}px) scale(.26) rotate(-28deg)` }
-    ], { duration: 1100, easing: 'cubic-bezier(.45,.05,.4,1)' }).onfinish = () => el.remove();
-    $('.fn-face', el).animate([{ opacity: 1 }, { opacity: 1, offset: 0.26 }, { opacity: 0, offset: 0.4 }, { opacity: 0 }], { duration: 1100, fill: 'forwards' });
-    $('.fn-plane', el).animate([{ opacity: 0 }, { opacity: 0, offset: 0.26 }, { opacity: 1, offset: 0.4 }, { opacity: 1 }], { duration: 1100, fill: 'forwards' });
-    if (navigator.vibrate) navigator.vibrate([12, 60, 8]);
-  }
-
-  async function sendNote(text) {
-    const reuse = S.session && S.room && isLive(S.room);
-    if (!reuse) {
-      try { await createRoom('single'); } catch (e) { toast(e.message, true); return; }
-    }
-    if (S.screen !== 'room') go('room');
-    if (!(S.ws && S.ws.readyState === 1)) await wsReady(8000);
-    if (!wsSend({ t: 'chat', text, note: true })) toast('Couldn\'t send that. Try again in a moment.', true);
-  }
-
-  async function copyNote(id, btn) {
-    const m = S.room && (S.room.messages || []).find((x) => x.id === id);
-    if (!m) return;
-    let ok = false;
-    try { await navigator.clipboard.writeText(m.text); ok = true; } catch {
-      const ta = document.createElement('textarea');
-      ta.value = m.text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
-      document.body.appendChild(ta); ta.select();
-      try { ok = document.execCommand('copy'); } catch { ok = false; }
-      ta.remove();
-    }
-    if (!ok) { toast('Couldn\'t copy. Select the text and copy it yourself.', true); return; }
-    if (navigator.vibrate) navigator.vibrate(15);
-    const card = btn && (btn.closest('.note-card') || btn.closest('.bubble'));
-    if (btn && btn.classList.contains('nc-copy')) {
-      btn.innerHTML = `${I.check(16)} Copied`;
-      setTimeout(() => { if (btn.isConnected) btn.innerHTML = `${I.copy} Copy`; }, 1800);
-    }
-    if (card && !reduceMotion) {
-      const st = document.createElement('span');
-      st.className = 'stamp';
-      st.textContent = 'Copied!';
-      card.appendChild(st);
-      setTimeout(() => st.remove(), 1300);
-      card.animate([{ transform: 'scale(1)' }, { transform: 'scale(.97, 1.02)' }, { transform: 'scale(1.01, .99)' }, { transform: 'scale(1)' }], { duration: 380, easing: 'ease-out' });
-      burst('✨', card, 7);
-    } else if (!card) toast('Copied');
   }
 
   // ---------- team room: chat, voice notes, calls ----------
@@ -764,8 +615,7 @@
       const name = who ? (who.name || who.device) : 'Someone';
       const pop = S.fresh.has(it.id) ? 'pop' : '';
       let inner;
-      if (it.k === 'msg' && it.msg.note) inner = `<div class="bubble note-b" data-dbl="${it.id}"><span class="nb-tag">📋 Pasted</span>${noteBody(it.msg.text)}<button class="nb-copy press" data-act="copy" data-id="${it.id}">${I.copy} Copy</button></div>`;
-      else if (it.k === 'msg') inner = `<div class="bubble" data-dbl="${it.id}">${quoteHtml(it.msg.replyTo)}${linkify(esc(it.msg.text))}</div>`;
+      if (it.k === 'msg') inner = `<div class="bubble" data-dbl="${it.id}">${quoteHtml(it.msg.replyTo)}${linkify(esc(it.msg.text))}</div>`;
       else if (it.k === 'voice') inner = `<div class="bubble media" data-dbl="${it.id}">${voiceHtml(it.f)}</div>`;
       else inner = `<div class="bubble media" data-dbl="${it.id}" data-file="${it.id}">${fileCardHtml(it.f, mine)}</div>`;
       out += `<div class="b-row ${mine ? 'me' : ''} ${first ? 'first' : ''} ${last ? 'last' : ''} ${pop}" data-key="${it.id}">
@@ -862,7 +712,7 @@
       <div id="reply-strip"></div>
       <div class="cbar">
         ${me.canSend ? `<button class="circle lg press" data-act="add-files" aria-label="Share files"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>` : ''}
-        <label class="field-wrap lg"><span class="sr">Message</span><textarea id="msg" rows="1" maxlength="20000" placeholder="${r.type === 'chat' ? 'Message…' : 'Message the room…'}" enterkeyhint="send"></textarea></label>
+        <label class="field-wrap lg"><span class="sr">Message</span><textarea id="msg" rows="1" maxlength="2000" placeholder="${r.type === 'chat' ? 'Message…' : 'Message the room…'}" enterkeyhint="send"></textarea></label>
         <button class="circle lg dark press send" id="send-btn" data-act="${me.canSend ? 'rec-start' : 'send-msg'}" aria-label="${me.canSend ? 'Record a voice note' : 'Send'}">${me.canSend ? I.mic : I.up(22)}</button>
       </div>
     </div>`;
@@ -930,9 +780,7 @@
       try { await wsReady(); } finally { S.waitingToSend = false; }
     }
     if (!S.session || S.session.code !== code) return;
-    // Long pastes go as a sticky note with a Copy button.
-    const asNote = text.length > 1200;
-    if (!wsSend(asNote ? { t: 'chat', text: ta.value, note: true } : { t: 'chat', text, replyTo: S.replyTo || undefined })) { toast('Reconnecting… try again in a second.', true); return; }
+    if (!wsSend({ t: 'chat', text, replyTo: S.replyTo || undefined })) { toast('Reconnecting… try again in a second.', true); return; }
     ta.value = ''; S.draft = ''; S.replyTo = null;
     ta.dispatchEvent(new Event('input'));
     updateReplyStrip();
@@ -988,7 +836,6 @@
     p.setAttribute('role', 'menu');
     p.innerHTML = EMOJI.map((e) => `<button role="menuitem" data-act="react" data-target="${id}" data-emoji="${e}" aria-label="React ${e}">${e}</button>`).join('')
       + `<span class="sep"></span><button class="txt" role="menuitem" data-act="reply" data-id="${id}">Reply</button>`
-      + (kind === 'msg' ? `<button class="txt" role="menuitem" data-act="copy" data-id="${id}">Copy</button>` : '')
       + (!mine && kind === 'msg' ? `<button class="txt" role="menuitem" data-act="report-msg" data-id="${id}">Report</button>` : '')
       + (!mine && kind !== 'msg' ? `<button class="txt" role="menuitem" data-act="report" data-id="${id}">Report</button>` : '');
     document.body.appendChild(p);
@@ -2184,13 +2031,9 @@
       render();
       if (!mine && !wasNear) showNewPill();
       if (!mine && document.visibilityState === 'hidden') { S.unread++; document.title = `(${S.unread}) beam`; }
-    } else if (msg.note && S.screen === 'room') {
-      S.fresh.add(msg.id);
-      render();
-      if (!mine && navigator.vibrate) navigator.vibrate([20, 50, 20]);
     } else if (!mine) {
       const m = memberById(msg.from);
-      toast(`${m ? (m.name || m.device) : 'Someone'}: ${msg.note ? '📋 ' : ''}${msg.text.trim().slice(0, 60)}`);
+      toast(`${m ? (m.name || m.device) : 'Someone'}: ${msg.text.slice(0, 60)}`);
     }
   }
 
@@ -2673,10 +2516,6 @@
     'add-files': async () => sendFiles(await pickFiles(), S.session ? S.session.type : 'single'),
     resume: () => go('room'),
     rooms: () => go('team'),
-    'note-new': () => openNoteSheet(),
-    'note-paste': () => pasteIntoSheet(),
-    'note-expand': (el) => { const b = el.previousElementSibling; if (b) b.classList.toggle('clamp'); el.textContent = b && b.classList.contains('clamp') ? 'Show all' : 'Show less'; },
-    copy: (el) => { closePicker(); copyNote(el.dataset.id, el); },
     notif: () => (notifOn() ? notifSheet() : enableNotifications()),
     'notif-later': () => { store.set('beam_notif_later', Date.now()); render(); },
     'notif-off': async () => { await disableNotifications(); },
@@ -2900,28 +2739,6 @@
     e.preventDefault();
     const canSendHere = S.screen === 'room' && S.room && S.session && (S.room.type === 'team' || S.room.type === 'chat' ? (S.room.members.find((m) => m.id === S.session.memberId) || {}).canSend : S.session.role === 'host');
     sendFiles([...e.dataTransfer.files], canSendHere ? S.session.type : 'single');
-  });
-
-  // Ctrl/Cmd+V anywhere: text opens a sticky note, pictures/files get sent.
-  document.addEventListener('paste', (e) => {
-    const t = e.target;
-    if (t && (t.closest('input, textarea, [contenteditable]') || t.closest('#sheet'))) return;
-    if ($('#sheet').open) return;
-    const cd = e.clipboardData;
-    if (!cd) return;
-    const files = [...(cd.files || [])];
-    const inChat = isChatRoom();
-    if (files.length) {
-      e.preventDefault();
-      const me = inChat ? (S.room.members.find((m) => m.id === meId()) || {}) : null;
-      sendFiles(files, inChat && me.canSend ? S.session.type : 'single');
-      return;
-    }
-    const text = cd.getData('text/plain');
-    if (!text || !text.trim()) return;
-    e.preventDefault();
-    if (inChat) { const ta = $('#msg'); if (ta) { ta.value += text; ta.dispatchEvent(new Event('input')); ta.focus(); } return; }
-    openNoteSheet(text);
   });
 
   // ---------- theme ----------
