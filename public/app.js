@@ -1,4 +1,4 @@
-/* lazr app — plain JavaScript, no build step. */
+/* lazrr app — plain JavaScript, no build step. */
 (() => {
   'use strict';
 
@@ -235,7 +235,7 @@
 
   const header = (right = '') => `
     <div class="row between">
-      <a class="brand" href="#" data-act="nav-home" aria-label="lazr home"><span class="logo">${I.mark()}</span><span class="wordmark">lazr</span></a>
+      <a class="brand" href="#" data-act="nav-home" aria-label="lazrr home"><span class="logo">${I.mark()}</span><span class="wordmark">lazrr</span></a>
       ${right}
     </div>`;
 
@@ -266,8 +266,8 @@
         ${header(`<div class="row" style="gap:10px"><button class="circle lg press theme-toggle" data-act="theme" aria-label="Switch light or dark theme">${I.moon}${I.sun}</button><button class="circle lg press bell ${notifOn() ? 'on' : ''}" data-act="notif" aria-label="${notifOn() ? 'Notifications are on' : 'Turn on notifications'}">${notifOn() ? I.bell : I.bellOff}</button><button class="circle lg press" data-act="edit-name" aria-label="Your name: ${esc(myName() || 'not set')}">${I.pen}</button></div>`)}
         <div class="home-grid"><div class="home-main">
         <div class="stack" style="gap:8px">
-          <h1 id="h-home">What are we sending today?</h1>
-          <p class="muted">Open lazr on both devices to start.</p>
+          <h1 id="h-home">What are we lazrring today?</h1>
+          <p class="muted">Open lazrr on both devices to start.</p>
         </div>
         <div class="tiles">
           <a href="#" class="tile lg press" data-act="nav-receive">
@@ -333,7 +333,7 @@
         <div class="divider">or</div>
         <div class="card row">
           <span class="connected"><span class="icon">${I.laptop}</span></span>
-          <p class="small muted grow">Scan the sender's QR with your phone camera. It opens lazr and connects by itself.</p>
+          <p class="small muted grow">Scan the sender's QR with your phone camera. It opens lazrr and connects by itself.</p>
         </div>
       </section>`;
     },
@@ -368,7 +368,7 @@
           <span class="mini-btn lg" style="width:48px;height:48px">${I.down(22)}</span>
           <span class="grow"><strong class="display" style="font-size:20px;display:block">Join with a code</strong><span class="small muted">For a chat, room or file</span></span>
         </a>
-        <p class="notice">Files shared in rooms are kept on lazr's servers for ${S.cfg.retentionDays} days, then deleted.</p>
+        <p class="notice">Files shared in rooms are kept on lazrr's servers for ${S.cfg.retentionDays} days, then deleted.</p>
       </section>`;
     }
   };
@@ -413,7 +413,7 @@
   }
 
   function keepOpenNote() {
-    return `<div class="banner lg tint" role="status"><span class="dot blue"></span><span><b>Keep lazr open until it finishes.</b> Your phone pauses sending if you switch apps or lock the screen. It carries on when you come back.</span></div>`;
+    return `<div class="banner lg tint" role="status"><span class="dot blue"></span><span><b>Keep lazrr open until it finishes.</b> Your phone pauses sending if you switch apps or lock the screen. It carries on when you come back.</span></div>`;
   }
 
   function senderScreen(s, r) {
@@ -464,7 +464,7 @@
         <button class="btn grow lg press" data-act="add-files">Add more</button>
         <button class="btn grow lg dark press" data-act="end-room">Done</button>
       </div>`}
-      <p class="notice">${r.e2e ? 'Encrypted on this device before upload. ' : ''}Files are kept on lazr's servers for ${S.cfg.retentionDays} days, then deleted.</p>
+      <p class="notice">${r.e2e ? 'Encrypted on this device before upload. ' : ''}Files are kept on lazrr's servers for ${S.cfg.retentionDays} days, then deleted.</p>
       </div></div>
     </section>`;
   }
@@ -481,7 +481,7 @@
       <div class="stack" style="gap:6px">
         <p class="small muted">From ${esc(host ? host.device : 'sender')} · code ${esc(s.code)}</p>
         <h1 id="h-recv2">${r.e2e && !keyOf(s.code) ? 'Unlocking…' : files.length ? (ready.length === files.length ? 'Here they are' : 'Incoming…') : 'Waiting for files…'}</h1>
-        ${r.e2e && !keyOf(s.code) ? '<p class="muted small">Getting the key from the other device. Keep lazr open on both.</p>' : ''}
+        ${r.e2e && !keyOf(s.code) ? '<p class="muted small">Getting the key from the other device. Keep lazrr open on both.</p>' : ''}
       </div>
       ${files.length ? '' : `<div class="stage" aria-hidden="true">
           <span style="position:absolute;left:50%;bottom:44px;margin-left:-37px;animation:drop 2.8s cubic-bezier(.3,.7,.3,1) infinite">${photoArt(74, 54)}</span>
@@ -489,7 +489,7 @@
         </div>`}
       <div class="list" id="files">${files.map((f) => fileRow(f, r, s)).join('')}</div>
       ${ready.length > 1 ? `<button class="btn block lg dark press" data-act="save-all">Save all ${ready.length}</button>` : ''}
-      <p class="notice">Files are kept on lazr's servers for ${S.cfg.retentionDays} days, then deleted.</p>
+      <p class="notice">Files are kept on lazrr's servers for ${S.cfg.retentionDays} days, then deleted.</p>
     </section>`;
   }
 
@@ -677,7 +677,7 @@
       ${ended ? `<div class="banner lg" style="margin-top:12px">${I.lock}<span>This ${duo ? 'chat' : 'room'} has ended. You can still save what was shared.</span></div>` : ''}
       ${!ended && notifNudge() ? `<div class="card row notif-nudge enter" style="margin-top:12px;gap:12px">
         <span class="mini-btn lg dark" style="width:40px;height:40px;flex-shrink:0">${I.bell}</span>
-        <span class="grow small" style="min-width:0"><b>Pop-ups for messages & calls</b><br><span class="muted">${notifState() === 'ios-install' ? 'On iPhone, add lazr to your Home Screen first.' : 'Even when lazr is closed.'}</span></span>
+        <span class="grow small" style="min-width:0"><b>Pop-ups for messages & calls</b><br><span class="muted">${notifState() === 'ios-install' ? 'On iPhone, add lazrr to your Home Screen first.' : 'Even when lazrr is closed.'}</span></span>
         <button class="btn sm lg dark press" data-act="notif">Turn on</button>
         <button class="circle press" style="width:34px;height:34px;border:none;background:transparent;color:var(--muted)" data-act="notif-later" aria-label="Not now">${I.close}</button>
       </div>` : ''}
@@ -1683,7 +1683,7 @@
     open();
   }
 
-  // ---------- notifications (pop-ups even when lazr is closed) ----------
+  // ---------- notifications (pop-ups even when lazrr is closed) ----------
   const P = { reg: null, sub: null, supported: 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window };
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -1739,16 +1739,16 @@
   async function enableNotifications() {
     const st = notifState();
     if (st === 'ios-install') {
-      sheet(`<h2>Add lazr to your Home Screen</h2>
-        <p class="muted">On iPhone and iPad, pop-ups work once lazr is installed:</p>
-        <ol class="steps"><li>Tap <b>Share</b> at the bottom of Safari</li><li>Choose <b>Add to Home Screen</b></li><li>Open lazr from your Home Screen and tap the bell</li></ol>
+      sheet(`<h2>Add lazrr to your Home Screen</h2>
+        <p class="muted">On iPhone and iPad, pop-ups work once lazrr is installed:</p>
+        <ol class="steps"><li>Tap <b>Share</b> at the bottom of Safari</li><li>Choose <b>Add to Home Screen</b></li><li>Open lazrr from your Home Screen and tap the bell</li></ol>
         <div class="row" style="justify-content:flex-end"><button class="btn sm lg dark press" value="ok">Got it</button></div>`, () => {});
       return;
     }
     if (st === 'unsupported') { toast('This browser can\'t show notifications.', true); return; }
     if (st === 'denied') {
       sheet(`<h2>Notifications are blocked</h2>
-        <p class="muted">Your browser is blocking pop-ups from lazr. Open the site settings (the icon next to the web address, or Settings → Notifications on your phone), allow notifications for lazr, then come back and tap the bell.</p>
+        <p class="muted">Your browser is blocking pop-ups from lazrr. Open the site settings (the icon next to the web address, or Settings → Notifications on your phone), allow notifications for lazrr, then come back and tap the bell.</p>
         <div class="row" style="justify-content:flex-end"><button class="btn sm lg dark press" value="ok">OK</button></div>`, () => {});
       return;
     }
@@ -1775,7 +1775,7 @@
   }
   function notifSheet() {
     sheet(`<h2>Notifications are on 🔔</h2>
-      <p class="muted">You'll get a pop-up for new messages and files, and your phone rings for calls, even when lazr is closed. If lazr is open on screen, you won't get a double alert.</p>
+      <p class="muted">You'll get a pop-up for new messages and files, and your phone rings for calls, even when lazrr is closed. If lazrr is open on screen, you won't get a double alert.</p>
       <div class="row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
         <button type="button" class="btn sm lg press" data-act="notif-test">Send a test</button>
         <button type="button" class="btn sm lg press" data-act="notif-off">Turn off</button>
@@ -1873,7 +1873,7 @@
   }
 
   // ---------- staying live without refreshing ----------
-  // Phones pause pages in the background and networks drop. Whenever lazr comes
+  // Phones pause pages in the background and networks drop. Whenever lazrr comes
   // back on screen (or every 15 seconds while it's open), check every room's live
   // connection, reconnect anything that went quiet, and catch up on what was missed.
   function sendVis() {
@@ -2222,7 +2222,7 @@
       if (mine || wasNear) S.stick = true;
       render();
       if (!mine && !wasNear) showNewPill();
-      if (!mine && document.visibilityState === 'hidden') { S.unread++; document.title = `(${S.unread}) lazr`; }
+      if (!mine && document.visibilityState === 'hidden') { S.unread++; document.title = `(${S.unread}) lazrr`; }
     } else if (!mine) {
       const m = memberById(msg.from);
       toast(`${m ? (m.name || m.device) : 'Someone'}: ${msg.text.slice(0, 60)}`);
@@ -2255,7 +2255,7 @@
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && S.unread) { S.unread = 0; document.title = 'lazr'; }
+    if (document.visibilityState === 'visible' && S.unread) { S.unread = 0; document.title = 'lazrr'; }
   });
 
   function onProgress(fileId, uploaded) {
@@ -2292,7 +2292,7 @@
     if (msg.state) S.room = S.session ? applyPlain(S.session.code, msg.state) : msg.state;
     const s = S.session;
     if (!s) return;
-    if (msg.reason === 'removed') toast('This room was closed by lazr.', true);
+    if (msg.reason === 'removed') toast('This room was closed by lazrr.', true);
     else if (msg.reason === 'expired') toast('The code expired before anyone joined.', true);
     else if (S.room && S.room.type === 'chat') toast('This chat has ended. You can still save what was shared.', true);
     else if (s.role !== 'host') toast('The host ended the room. You can still save the files.', true);
@@ -2741,7 +2741,7 @@
     'notif-test': async () => {
       try {
         const reg = P.reg || await navigator.serviceWorker.ready;
-        await reg.showNotification('lazr', { body: 'Notifications are working 🎉', icon: '/icons/icon-192.png', badge: '/icons/badge-96.png', tag: 'beam-test' });
+        await reg.showNotification('lazrr', { body: 'Notifications are working 🎉', icon: '/icons/icon-192.png', badge: '/icons/badge-96.png', tag: 'beam-test' });
       } catch (e) { toast(e.message, true); }
     },
     'ring-answer': () => answerRing(),
@@ -2781,7 +2781,7 @@
       const f = S.room.files.find((x) => x.id === el.dataset.id);
       sheet(`
         <h2>Report ${esc(f ? f.name : 'file')}?</h2>
-        <p class="muted small">lazr's team will review it. You won't be identified to the sender.</p>
+        <p class="muted small">lazrr's team will review it. You won't be identified to the sender.</p>
         <label class="field">What's wrong? <input class="input" name="reason" maxlength="300" placeholder="e.g. I didn't expect this file"></label>
         <div class="row" style="justify-content:flex-end">
           <button class="btn sm lg press" value="cancel" formnovalidate>Cancel</button>
@@ -2804,9 +2804,9 @@
     },
     share: async () => {
       const url = joinLink(S.session);
-      const text = `Join my lazr room with code ${S.session.code}`;
+      const text = `Join my lazrr room with code ${S.session.code}`;
       if (navigator.share) {
-        try { await navigator.share({ title: 'lazr', text, url }); return; } catch { /* cancelled */ }
+        try { await navigator.share({ title: 'lazrr', text, url }); return; } catch { /* cancelled */ }
       }
       try { await navigator.clipboard.writeText(`${text}: ${url}`); toast('Invite link copied'); } catch { toast(url); }
     }
@@ -2836,7 +2836,7 @@
       sheet(`
         <h2>Report this message?</h2>
         <p class="muted small" style="white-space:pre-wrap">"${esc(m ? m.text.slice(0, 200) : '')}"</p>
-        <p class="muted small">lazr's team will review it. The sender won't see who reported it.</p>
+        <p class="muted small">lazrr's team will review it. The sender won't see who reported it.</p>
         <label class="field">What's wrong? (optional) <input class="input" name="reason" maxlength="300" placeholder="e.g. bullying, spam"></label>
         <div class="row" style="justify-content:flex-end">
           <button class="btn sm lg press" value="cancel" formnovalidate>Cancel</button>
@@ -3023,7 +3023,7 @@
     setTimeout(() => { splash.classList.add('out'); setTimeout(() => splash.remove(), 450); }, reduceMotion ? 0 : 1300);
   }
 
-  // An invite link opened while lazr is already open.
+  // An invite link opened while lazrr is already open.
   window.addEventListener('hashchange', async () => {
     const o = /#open=([A-Za-z0-9]{4,5})(?:&answer=(voice|video|ring))?/.exec(location.hash);
     if (o) { history.replaceState(null, '', location.pathname); afterOpen(o[1], o[2]); return; }

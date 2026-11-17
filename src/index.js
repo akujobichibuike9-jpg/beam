@@ -1,4 +1,4 @@
-// lazr Worker: public API for the app, admin API, and the daily clean-up.
+// lazrr Worker: public API for the app, admin API, and the daily clean-up.
 //
 // App API (device token in the `x-beam-token` header):
 //   POST   /api/rooms                         create a 1-to-1 or team room -> code, QR link, token

@@ -1,4 +1,4 @@
-/* lazr chat wallpapers — 15 original doodle patterns in lazr's colours. */
+/* lazrr chat wallpapers — 15 original doodle patterns in lazrr's colours. */
 (() => {
   'use strict';
   const INK = '#0E1116';

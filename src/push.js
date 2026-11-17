@@ -1,4 +1,4 @@
-// Web Push: pop-up notifications on phones and laptops, even when lazr is closed.
+// Web Push: pop-up notifications on phones and laptops, even when lazrr is closed.
 // No extra services: the browser's own push service (Google, Apple, Mozilla,
 // Microsoft) delivers them. We sign each push with a VAPID key and encrypt the
 // message so only that device can read it (RFC 8291 / RFC 8292).

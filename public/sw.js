@@ -1,5 +1,5 @@
-// lazr service worker: shows pop-up notifications for new messages and rings
-// for calls, even when lazr is closed. Also lets lazr be installed as an app.
+// lazrr service worker: shows pop-up notifications for new messages and rings
+// for calls, even when lazrr is closed. Also lets lazrr be installed as an app.
 
 importScripts('/e2e.js');
 
@@ -56,10 +56,10 @@ const BADGE = '/icons/badge-96.png';
 
 self.addEventListener('push', (e) => {
   let d = {};
-  try { d = e.data ? e.data.json() : {}; } catch { d = { title: 'lazr', body: e.data ? e.data.text() : '' }; }
+  try { d = e.data ? e.data.json() : {}; } catch { d = { title: 'lazrr', body: e.data ? e.data.text() : '' }; }
   e.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    // Let an open lazr window ring in-page too.
+    // Let an open lazrr window ring in-page too.
     wins.forEach((w) => w.postMessage({ t: 'push', data: d }));
     const call = d.kind === 'call';
     // Encrypted chats: the server only had sealed text; unlock it here.
@@ -74,9 +74,9 @@ self.addEventListener('push', (e) => {
       if (n > 1) body = `${body}\n${n} new messages`;
       d.count = n;
     }
-    await self.registration.showNotification(d.title || 'lazr', {
+    await self.registration.showNotification(d.title || 'lazrr', {
       body,
-      tag: d.tag || 'lazr',
+      tag: d.tag || 'lazrr',
       renotify: true,
       icon: ICON,
       badge: BADGE,
