@@ -1,4 +1,6 @@
-# beam
+# lazr
+
+_(Formerly called beam. Internal Cloudflare resource names still use `beam`.)_
 
 Send files between your phone and laptop with a 5-character code (letters and
 numbers, no look-alikes like 0/O or 1/I) or a QR. Codes work for **1 hour**.
@@ -124,18 +126,18 @@ the original file. If a browser can't convert a video, the original is sent.
 
 ## Notifications and installing as an app
 
-beam can be installed (Chrome: install icon in the address bar; Android: "Install
+lazr can be installed (Chrome: install icon in the address bar; Android: "Install
 app"; iPhone: Share → Add to Home Screen). Tap the bell to turn on pop-ups:
 
 - new messages, voice notes and files show as a notification (one per chat,
-  with a count), only when beam isn't on screen, so there's no double alert
+  with a count), only when lazr isn't on screen, so there's no double alert
 - calls ring with Answer / Decline; if nobody picks up you get "Missed call"
-- tapping a notification opens that chat, even if beam was closed
+- tapping a notification opens that chat, even if lazr was closed
 
 This uses standard Web Push (no cron, no extra service). The signing key
 (VAPID) is created automatically the first time and stored in D1 (`kv` table),
-so there's nothing to configure. iPhone/iPad need iOS 16.4+ and beam added to the
-Home Screen. While beam is open, every room's live connection checks itself every
+so there's nothing to configure. iPhone/iPad need iOS 16.4+ and lazr added to the
+Home Screen. While lazr is open, every room's live connection checks itself every
 15 seconds and reconnects (and catches up) whenever the phone wakes or the
 network comes back, so you never need to refresh.
 

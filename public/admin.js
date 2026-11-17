@@ -1,4 +1,4 @@
-/* beam admin dashboard — plain JavaScript. */
+/* lazr admin dashboard — plain JavaScript. */
 (() => {
   'use strict';
   const $ = (s, el = document) => el.querySelector(s);
@@ -89,7 +89,7 @@
     const link = (id, label, icon, extra = '') => `<a href="#/${id}" class="${A.page === id ? 'lg dark' : ''}" ${A.page === id ? 'aria-current="page"' : ''}>${icon}${label}${extra}</a>`;
     return `<div class="ad">
       <aside class="ad-side">
-        <div class="row" style="padding:0 8px;gap:10px"><span class="logo" style="width:36px;height:36px;border-radius:10px">${ICON.mark}</span><span class="wordmark" style="font-size:22px">beam</span><span class="tag blue" style="font-size:11px">Admin</span></div>
+        <div class="row" style="padding:0 8px;gap:10px"><span class="logo" style="width:36px;height:36px;border-radius:10px">${ICON.mark}</span><span class="wordmark" style="font-size:22px">lazr</span><span class="tag blue" style="font-size:11px">Admin</span></div>
         <nav aria-label="Admin">
           ${link('overview', 'Overview', ICON.grid)}
           ${link('files', 'Files', ICON.file)}
@@ -112,7 +112,7 @@
     const root = $('#admin');
     if (!A.token) {
       root.innerHTML = `<form class="login" id="login">
-        <div class="row"><span class="logo">${ICON.mark}</span><span class="wordmark">beam admin</span></div>
+        <div class="row"><span class="logo">${ICON.mark}</span><span class="wordmark">lazr admin</span></div>
         <label class="field">Admin token <input class="input" type="password" name="token" autocomplete="current-password" required></label>
         <p class="error" id="login-err" role="alert"></p>
         <button class="btn lg dark press">Sign in</button>

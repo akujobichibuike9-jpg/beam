@@ -1,4 +1,4 @@
-/* beam chat wallpapers — 15 original doodle patterns in beam's colours. */
+/* lazr chat wallpapers — 15 original doodle patterns in lazr's colours. */
 (() => {
   'use strict';
   const INK = '#0E1116';

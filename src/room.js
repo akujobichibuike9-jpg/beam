@@ -40,7 +40,7 @@ export class Room extends DurableObject {
   online(id) {
     return this.ctx.getWebSockets(id).length > 0;
   }
-  // Is beam open and on screen for this person right now (any of their devices)?
+  // Is lazr open and on screen for this person right now (any of their devices)?
   watching(id) {
     return this.ctx.getWebSockets(id).some((ws) => { try { return !(ws.deserializeAttachment() || {}).hidden; } catch (e) { return true; } });
   }
@@ -66,7 +66,7 @@ export class Room extends DurableObject {
     return { ok: true };
   }
 
-  // Send a pop-up to everyone (except `fromId`) who isn't looking at beam.
+  // Send a pop-up to everyone (except `fromId`) who isn't looking at lazr.
   notify(fromId, data, opts = {}, only) {
     const s = this.s;
     if (!s || s.type === 'single') return [];
@@ -693,7 +693,7 @@ export class Room extends DurableObject {
     await this.save();
     this.broadcast({ t: 'call', call: this.publicCall(), joined: me.id });
     if (isNew) {
-      // Ring everyone who isn't looking at beam.
+      // Ring everyone who isn't looking at lazr.
       const room = this.roomTitle();
       s.call.rang = this.notify(me.id, {
         kind: 'call', video: !!s.call.video, callId: s.call.id, from: this.label(me), where: room || '',
